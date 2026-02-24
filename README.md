@@ -5,13 +5,13 @@ A comprehensive Claude AI skill for Flussonic Media Server — covering configur
 ## Installation
 
 ```bash
-npx skills add https://github.com/YOUR_USERNAME/YOUR_REPO
+npx skills add a1500llc/flussonic-skill
 ```
 
 Or install to a specific agent:
 
 ```bash
-npx skills add https://github.com/YOUR_USERNAME/YOUR_REPO --skill flussonic-media-server -a claude-code
+npx skills add a1500llc/flussonic-skill --skill flussonic-media-server -a claude-code
 ```
 
 ## What's Included
