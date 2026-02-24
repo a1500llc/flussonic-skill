@@ -177,7 +177,7 @@ peer transcoder4;
 
 stream dvb01 {
   input m4f://grabber1/dvb01;
-  transcoder vb=1000k deinterlace=true ab=128k;
+  transcoder vb=1000k deinterlace=yadif ab=128k;
   cluster_ingest;
 }
 ```

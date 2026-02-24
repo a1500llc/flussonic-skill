@@ -38,12 +38,11 @@ stream mystream {
 ```
 
 ### Multiple Profiles (Multibitrate)
+Each `vb=` on the transcoder line creates a new video track. Options after a `vb=` apply to that track until the next `vb=`. Audio options (`ab=`) go at the end and apply globally.
 ```
 stream hd {
   input rtsp://camera:554/stream;
-  transcoder vb=5000k size=1920x1080 ab=192k preset=fast;
-  transcoder vb=2500k size=1280x720 ab=128k preset=medium;
-  transcoder vb=1000k size=640x480 ab=64k preset=medium;
+  transcoder vb=5000k size=1920x1080 preset=fast vb=2500k size=1280x720 preset=medium vb=1000k size=640x480 preset=medium ab=128k;
 }
 ```
 
@@ -79,7 +78,7 @@ stream hd {
 ```
 stream gpu_stream {
   input rtsp://camera:554/stream;
-  transcoder hw=nvidia vb=2000k ab=128k preset=fast;
+  transcoder hw=nvenc vb=2000k ab=128k preset=fast;
 }
 ```
 
@@ -95,7 +94,7 @@ stream qsv_stream {
 
 ### Device Selection
 ```
-transcoder deviceid=0 hw=nvidia vb=2000k;
+transcoder deviceid=0 hw=nvenc vb=2000k;
 ```
 
 ### GPU vs CPU
@@ -145,7 +144,7 @@ size=1280x-2
 
 **H.265 (HEVC)**
 ```
-transcoder codec=h265 vb=2000k;
+transcoder vcodec=hevc vb=2000k;
 ```
 - Better compression (25-50% vs H.264)
 - Limited browser support (Chrome 107+)
@@ -153,7 +152,7 @@ transcoder codec=h265 vb=2000k;
 
 **AV1**
 ```
-transcoder codec=av1 vb=2000k;
+transcoder vcodec=av1 vb=2000k;
 ```
 - Best compression (50% vs H.264)
 - Limited hardware support
@@ -225,7 +224,7 @@ For formats that don't need transcoding:
 ```
 stream copy_stream {
   input rtsp://source/stream;
-  transcoder codec=copy ab=copy;
+  transcoder vb=copy ab=copy;
 }
 ```
 **Caution:** Ensure codecs are already compatible
@@ -242,7 +241,7 @@ stream copy_stream {
 ```
 stream coder_stream {
   input rtsp://camera:554/stream;
-  transcoder hw=coder vb=2000k ab=128k deinterlace=yadif;
+  transcoder hw=nvenc vb=2000k ab=128k deinterlace=yadif;
 }
 ```
 

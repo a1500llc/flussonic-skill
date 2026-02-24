@@ -57,9 +57,7 @@ Record multiple bitrates for fallback:
 stream hd {
   input rtsp://camera:554/stream;
   dvr /mnt/archive/hd;
-  transcoder vb=5000k size=1920x1080;
-  transcoder vb=2000k size=1280x720;
-  transcoder vb=1000k size=640x480;
+  transcoder vb=5000k size=1920x1080 vb=2000k size=1280x720 vb=1000k size=640x480 ab=128k;
 }
 ```
 

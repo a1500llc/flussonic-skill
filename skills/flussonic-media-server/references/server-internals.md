@@ -363,7 +363,7 @@ These schemas define the complete API surface, request/response validation, and 
 
 ## 8. Key Config File Examples
 
-Real-world configurations from live servers include:
+Real-world configurations from live servers (API JSON format, NOT config file syntax — see `references/transcoding.md` for config file syntax):
 
 ### Transcoder Configuration
 ```

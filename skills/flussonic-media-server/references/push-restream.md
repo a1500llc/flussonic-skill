@@ -83,7 +83,7 @@ output push://rtmp://user:password@server:1935/app/stream;
 ```
 stream high_quality {
   input webrtc://;
-  transcoder codec=h265 vb=5000k preset=fast;
+  transcoder vcodec=hevc vb=5000k preset=fast;
   output push://rtmp://youtube-server/live/stream-key;
 }
 ```

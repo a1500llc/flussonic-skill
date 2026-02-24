@@ -41,7 +41,7 @@ Basic stream config pattern:
 stream channel1 {
   input udp://239.0.0.1:1234;
   input tshttp://backup-server/channel1/mpegts backup;
-  transcoder vb=4000k ab=128k size=1920x1080 vcodec=h264 acodec=aac;
+  transcoder vb=4000k size=1920x1080 ab=128k;
   dvr /mnt/storage/channel1 retention=7d;
   push rtmp://cdn.example.com/live/channel1;
 }
@@ -89,11 +89,8 @@ This is the most common workflow. The user captures a live signal, transcodes it
 stream live_channel {
   input udp://239.0.0.1:1234;
 
-  # Transcode to multibitrate
-  transcoder vb=4000k ab=128k size=1920x1080 vcodec=h264 acodec=aac {
-    profile vb=2000k ab=96k size=1280x720;
-    profile vb=800k ab=64k size=640x360;
-  }
+  # Transcode to multibitrate (multiple vb= on one line = multiple video tracks)
+  transcoder vb=4000k size=1920x1080 vb=2000k size=1280x720 vb=800k size=640x360 ab=128k;
 
   # Record with 7 days retention
   dvr /mnt/storage/live_channel retention=7d;
@@ -119,10 +116,7 @@ stream resilient_channel {
 ```
 stream gpu_channel {
   input rtsp://camera:554/stream;
-  transcoder vb=5000k size=1920x1080 vcodec=h264 hw=nvenc deinterlace=on {
-    profile vb=2500k size=1280x720;
-    profile vb=1000k size=640x360;
-  }
+  transcoder hw=nvenc vb=5000k size=1920x1080 deinterlace=yadif vb=2500k size=1280x720 vb=1000k size=640x360 ab=128k;
 }
 ```
 

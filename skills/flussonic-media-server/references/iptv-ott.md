@@ -235,9 +235,7 @@ stream protected_ott {
    ```
    stream ott_adaptive {
      input rtsp://source/stream;
-     transcoder vb=5000k size=1920x1080;
-     transcoder vb=2500k size=1280x720;
-     transcoder vb=1000k size=640x480;
+     transcoder vb=5000k size=1920x1080 vb=2500k size=1280x720 vb=1000k size=640x480 ab=128k;
      hls { variant = bitrate; };
    }
    ```
