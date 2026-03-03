@@ -23,9 +23,8 @@
 
 ### Built-in Transcoder
 Flussonic includes a software transcoder. For GPU acceleration, use:
-- Nvidia NVENC (recommended)
-- Intel Quick Sync (QSV)
-- Or hardware: Flussonic Coder
+- Nvidia NVENC (recommended, only supported GPU option since v25.09)
+- Or hardware: Flussonic Coder (Jetson-based)
 
 ## Configuration Syntax
 
@@ -295,8 +294,8 @@ stream coder_stream {
 # Check GPU visibility
 nvidia-smi
 
-# Verify process sees GPU
-curl http://server/streamer/api/v3/system/info | jq '.gpu'
+# Verify Flussonic sees GPU (transcoder_devices list)
+curl -u user:pass http://server/streamer/api/v3/config/stats | jq '.transcoder_devices'
 ```
 
 ### Commands

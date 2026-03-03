@@ -180,58 +180,49 @@ These tools are crucial for troubleshooting, performance analysis, and stream de
 
 ---
 
-## 4. Private API Endpoints (21 endpoints)
+## 4. Private API Endpoints (21 paths)
 
 Flussonic maintains two API schemas:
-- **Public API**: 74 endpoints (schema-v3-public.json)
-- **Private API**: 95 endpoints (schema-v3-private.json)
+- **Public API**: 74 paths (schema-v3-public.json)
+- **Private API**: 95 paths (schema-v3-private.json)
 
-The 21 **private-only endpoints** not exposed in public documentation:
+The 21 **private-only paths** not exposed in public documentation (each path may support multiple HTTP methods):
 
-### System Management (8 endpoints)
+### License & Activation (6 paths)
 - `PUT /activate` - Activate Flussonic license
-- `GET /license` - Retrieve license information
-- `PUT /license` - Update license
-- `DELETE /license` - Remove license
+- `GET/PUT/DELETE /license` - Manage license
 - `GET /license/activations` - List all license activations
-- `GET /license/activations/{version}` - Get specific activation
-- `PUT /license/activations/{version}` - Update activation
-- `DELETE /license/activations/{version}` - Revoke activation
+- `GET/PUT/DELETE /license/activations/{version}` - Manage specific activation
 - `GET /license/clients` - List licensed clients
 - `GET /license/request` - Get license request for offline activation
+
+### System Management (4 paths)
 - `POST /system/restart` - Restart Flussonic server
-- `GET /system/updater` - Check available updates
-- `POST /system/updater` - Upgrade Flussonic version
+- `GET/POST /system/updater` - Check/trigger updates
 - `GET /system/logs_download` - Download server logs as archive
 - `POST /system/upload_logs` - Upload logs to vendor support
 
-### TLS & Certificates (3 endpoints)
-- `GET /tls/certificate` - Retrieve TLS certificate
-- `DELETE /tls/certificate` - Remove TLS certificate
-- `PUT /tls/certificate` - Install TLS certificate
+### TLS & Certificates (2 paths)
+- `GET/PUT/DELETE /tls/certificate` - Manage TLS certificate
 - `POST /tls/letsencrypt` - Issue Let's Encrypt certificate
 
-### SSH Agent (2 endpoints)
-- `GET /system/ssh_agent` - Get SSH agent configuration
-- `PUT /system/ssh_agent` - Update SSH agent
-- `DELETE /system/ssh_agent` - Remove SSH agent
+### SSH Agent (1 path)
+- `GET/PUT/DELETE /system/ssh_agent` - Manage SSH agent configuration
 
-### Cluster (2 endpoints)
+### Cluster (2 paths)
 - `GET /cluster/balancers` - List load balancers
-- `GET /cluster/balancers/{name}` - Get balancer details
-- `PUT /cluster/balancers/{name}` - Update balancer
-- `DELETE /cluster/balancers/{name}` - Remove balancer
+- `GET/PUT/DELETE /cluster/balancers/{name}` - Manage specific balancer
 
-### Stream Operations (2 endpoints)
+### Stream Operations (2 paths)
 - `POST /streams/{name}/ads/splice_insert` - Insert SCTE-35 ad splice point
 - `POST /streams/{name}/inputs/{index}/select` - Force select specific input source
 
-### Admin & UI (3 endpoints)
+### Admin & UI (3 paths)
 - `POST /admin_view_token` - Generate admin authentication token
 - `PUT /admin_session_save/{session_id}` - Save telemetry session
 - `GET /ui_settings` - Get UI configuration settings
 
-### Monitoring (1 endpoint)
+### Monitoring (1 path)
 - `GET /otel` - Get OpenTelemetry metrics and statistics
 
 ---
@@ -363,68 +354,81 @@ These schemas define the complete API surface, request/response validation, and 
 
 ## 8. Key Config File Examples
 
-Real-world configurations from live servers (API JSON format, NOT config file syntax — see `references/transcoding.md` for config file syntax):
+Flussonic has two configuration formats: the **config file syntax** (`/etc/flussonic/flussonic.conf`) and the **API JSON format** (REST API). Both are shown below for reference.
 
-### Transcoder Configuration
+### Config File Syntax (flussonic.conf)
+
+Real-world multibitrate transcoding with DVR and DRM:
 ```
-transcoder {
-  hw = "nvenc"
-  deviceid = 0
-  gop = 60
-  fps = 30
-  profiles = [
-    {name = "144p", bitrate = "250k"},
-    {name = "180p", bitrate = "400k"},
-    {name = "288p", bitrate = "800k"},
-    {name = "360p", bitrate = "1.3M"},
-    {name = "432p", bitrate = "2.4M"},
-    {name = "720p", bitrate = "3.7M"}
-  ]
+dvr NewDvr1 {
+  root /mnt/dvr1;
+}
+
+stream Live_1196 {
+  input udp://239.77.16.88:8999/172.17.202.18?sources=10.77.22.88&buffer_size=8M&flushpcr=1&pkt_size=1316&cc_check=repeat priority=1 source_timeout=15;
+  input udp://239.77.17.88:8999/172.17.202.18?sources=10.77.23.88&buffer_size=8M&flushpcr=1&pkt_size=1316&cc_check=repeat;
+  segment_count 30;
+  segment_duration 2;
+  dvr @NewDvr1 2h;
+  protocols dash hls;
+  drm cpix keyserver=http://drm-server/api/drm/cpix?client=myapp&clientToken=SECRET resource_id=Live_1196;
+  transcoder deviceid=0 fps=30 gop=192 hw=nvenc deinterlace=true deinterlace_rate=frame vb=250k vcodec=h264 aresample=async=1 tolerate_corrupted=1 size=-1x144:scale:blur vb=400k vcodec=h264 aresample=async=1 tolerate_corrupted=1 sar=1:1 size=-1x180:scale:blur vb=800k vcodec=h264 aresample=async=1 tolerate_corrupted=1 sar=1:1 size=-1x288:scale:blur vb=1300k vcodec=h264 aresample=async=1 tolerate_corrupted=1 sar=1:1 size=-1x360:scale:blur vb=2400k vcodec=h264 aresample=async=1 tolerate_corrupted=1 sar=1:1 size=-1x432:scale:blur vb=3702k vcodec=h264 aresample=async=1 tolerate_corrupted=1 sar=1:1 size=-1x720:scale:blur ab=128k acodec=aac ar=48000;
 }
 ```
 
-### Input Stream Configuration
-```
-input {
-  scte35 = true
-  source_timeout = 15
-  buffer_size = "8M"
-  cc_check = "repeat"
-  backup_inputs = [
-    {priority = 1, url = "udp://..."},
-    {priority = 2, url = "udp://..."}
-  ]
+Key syntax rules:
+- Top-level directives end with `;`
+- Blocks use `{ }` without semicolons on closing braces
+- `transcoder` is a single-line directive with space-separated params; each `vb=` starts a new video profile
+- `size=-1xHEIGHT:scale:blur` uses `-1` for auto-width and `:scale:blur` for sizing strategy and background
+- Extra encoder params like `aresample=async=1` and `tolerate_corrupted=1` go inline per profile
+
+### API JSON Format
+
+The same transcoder config as returned by `GET /streamer/api/v3/streams/{name}`:
+```json
+{
+  "transcoder": {
+    "global": {
+      "hw": "nvenc",
+      "fps": 30,
+      "gop": 192,
+      "deviceid": 0
+    },
+    "decoder": {
+      "deinterlace": true,
+      "deinterlace_rate": "frame"
+    },
+    "tracks": [
+      {
+        "content": "audio",
+        "codec": "aac",
+        "bitrate": 128000,
+        "sample_rate": 48000
+      },
+      {
+        "content": "video",
+        "codec": "h264",
+        "bitrate": 250000,
+        "preset": "veryfast",
+        "size": {"strategy": "scale", "width": -1, "height": 144, "background": "blur"},
+        "extra": {"aresample": "async=1", "tolerate_corrupted": "1"}
+      },
+      {
+        "content": "video",
+        "codec": "h264",
+        "bitrate": 3702000,
+        "preset": "veryfast",
+        "size": {"strategy": "scale", "width": -1, "height": 720, "background": "blur"},
+        "sar": {"x": 1, "y": 1},
+        "extra": {"aresample": "async=1", "tolerate_corrupted": "1"}
+      }
+    ]
+  }
 }
 ```
 
-### HLS/Segment Configuration
-```
-hls {
-  segment_count = 30
-  segment_duration = 2000  # milliseconds
-}
-```
-
-### Advanced Transcoder Parameters
-```
-transcoder_extra_params = [
-  "aresample=async=1",
-  "tolerate_corrupted=1"
-]
-```
-
-### Scale & Deinterlace
-```
-size_strategy {
-  scale = true
-  background = "blur"
-}
-
-deinterlace {
-  enabled = true
-  rate = "frame"
-}
-```
+Note: The API JSON uses `"tracks"` array with `"content": "video"` or `"audio"` for each profile. Bitrates are in bps (not kbps). The `"size"` object replaces the config file's `size=WxH:strategy:bg` notation.
 
 ---
 

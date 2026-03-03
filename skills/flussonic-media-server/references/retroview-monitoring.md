@@ -405,7 +405,7 @@ For operators ingesting live signals → transcoding → CDN:
 - [ ] Input Monitoring dashboard visible in NOC at all times
 - [ ] Stream errors alert configured for all priority channels
 - [ ] CPU/Scheduler/Memory/Disk alerts set to 85% threshold
-- [ ] DVD recording discontinuities monitored
+- [ ] DVR recording discontinuities monitored
 - [ ] GPU temperature alert at 85°C
 - [ ] Email contact point configured for operations team
 - [ ] Flapping stream alert configured (3+ events in 3h)

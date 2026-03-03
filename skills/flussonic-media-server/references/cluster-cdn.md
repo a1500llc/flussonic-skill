@@ -213,7 +213,7 @@ curl -u user:pass http://server/streamer/api/v3/streams | jq '.[] | {name, peer}
 ### Health Check
 ```bash
 # Monitor cluster connectivity
-watch -n 5 'curl -s -u user:pass http://server/streamer/api/v3/system/info | jq .cluster'
+watch -n 5 'curl -s -u user:pass http://server/streamer/api/v3/cluster/peers | jq .'
 ```
 
 ### Logs
@@ -258,7 +258,7 @@ grep cluster_key /etc/flussonic/flussonic.conf
 
 ### High CPU on Some Peers
 - Unequal stream distribution
-- Check: `curl -u user:pass http://server/streamer/api/v3/system/info | jq .cpu`
+- Check: `curl -u user:pass http://server/streamer/api/v3/config/stats | jq '{cpu_usage, scheduler_load}'`
 - Redistribute streams via config
 - Monitor CPU per stream
 

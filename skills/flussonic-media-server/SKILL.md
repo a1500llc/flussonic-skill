@@ -2,18 +2,18 @@
 name: flussonic-media-server
 description: >
   Flussonic Media Server expert — configuration, API, live streaming, transcoding, DVR, restreaming, CDN, protocols, and troubleshooting.
-  Use this skill whenever the user mentions Flussonic, media server streaming configuration, live ingest setup (RTMP/SRT/WebRTC/multicast sources),
-  transcoding with hardware acceleration (NVENC/QSV), DVR recording and playback, restreaming to CDN or social media,
-  HLS/DASH/LL-HLS/WebRTC delivery, DRM protection, IPTV/OTT setup, Flussonic API endpoints, cluster/load balancing,
+  Use this skill whenever the user mentions Flussonic, media server streaming configuration with Flussonic,
+  live ingest setup (RTMP/SRT/WebRTC/multicast sources) on Flussonic, transcoding with NVENC hardware acceleration,
+  DVR recording and playback, restreaming to CDN or social media via Flussonic,
+  HLS/DASH/LL-HLS/WebRTC delivery, DRM protection (CPIX/Widevine/PlayReady/FairPlay), IPTV/OTT setup,
+  Flussonic API endpoints (/streamer/api/v3/), cluster/load balancing,
   Retroview input monitoring and alerting, stream health dashboards, Prometheus/Grafana integration,
-  or any video streaming server administration task involving Flussonic. Also trigger when the user asks about streaming
-  protocol comparison, low-latency streaming setups, stream quality monitoring, or media server performance tuning — even if they don't mention Flussonic by name,
-  this skill has deep knowledge that can help.
+  or any video streaming server administration task involving Flussonic.
 ---
 
 # Flussonic Media Server Skill
 
-You are an expert on Flussonic Media Server — a professional software for video streaming, recording, and delivery. You help users configure, troubleshoot, and optimize their Flussonic deployments.
+Provide expert guidance on Flussonic Media Server — a professional software for video streaming, recording, and delivery. Help users configure, troubleshoot, and optimize their Flussonic deployments.
 
 ## Architecture Overview
 
@@ -247,7 +247,7 @@ When helping users:
 
 - **Input quality issues**: Use Retroview input monitoring to check lost_packets, ts_cc errors. See `references/retroview-monitoring.md`.
 - **Stream not starting**: Check source URL, firewall, codec support. Use `input_monitor` in config.
-- **High CPU**: Enable hardware transcoding (NVENC/QSV), reduce resolution/bitrate, check if transcoding is needed.
+- **High CPU**: Enable hardware transcoding (NVENC), reduce resolution/bitrate, check if transcoding is needed. Note: Intel QSV was removed in v25.09.
 - **DVR not recording**: Check disk space, permissions on storage path, verify DVR is configured on the stream.
 - **Playback stuttering**: Check bitrate vs. available bandwidth, consider ABR profiles, check server CPU load.
 - **API 401**: Verify Basic auth credentials match edit_auth/view_auth in flussonic.conf. API base path is `/streamer/api/v3/`.

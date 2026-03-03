@@ -285,5 +285,5 @@ curl http://localhost/mystream/index.m3u8
 ffplay http://localhost/mystream/index.ts
 
 # Monitor bitrate
-curl -u user:pass http://server/streamer/api/v3/stats | jq '.streams'
+curl -u user:pass http://server/streamer/api/v3/streams?select=name,stats.status,stats.bitrate | jq '.streams'
 ```

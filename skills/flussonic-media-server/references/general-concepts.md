@@ -253,8 +253,8 @@ API request failed             # API error
 
 ### Monitoring
 ```bash
-# Stream activity
-curl http://server/streamer/api/v3/stats | jq '.streams'
+# Server stats (CPU, memory, disk, GPU)
+curl -u user:pass http://server/streamer/api/v3/config/stats | jq '.'
 
 # CPU/memory (via system)
 ps aux | grep flussonic
