@@ -63,10 +63,14 @@ stream hd {
   - slow: highest quality, highest CPU
 
 **Deinterlacing:**
-- `deinterlace=yadif` - best quality (CPU intensive)
-- `deinterlace=bwdif` - better quality
-- `deinterlace=w3fdif` - highest quality (very slow)
-- `deinterlace=simple` - basic deinterlace
+Flussonic uses two paired parameters: `deinterlace` and `deinterlace_rate`.
+- `deinterlace=true` — standard deinterlace (most common)
+- `deinterlace=adaptive` — adaptive deinterlace (auto-detects interlaced content)
+- `deinterlace=false` — disabled (default)
+- `deinterlace_rate=frame` — output one frame per field pair (default, same FPS)
+- `deinterlace_rate=field` — output one frame per field (doubles FPS)
+
+Note: Values like `yadif`, `bwdif`, `w3fdif` are FFmpeg filters and are NOT valid Flussonic deinterlace options.
 
 **Framerate:**
 - `fps=VALUE` - output FPS (e.g., fps=25, fps=30)
@@ -84,12 +88,11 @@ stream gpu_stream {
 
 **GPU Memory:** Each GPU can handle ~10-20 HD transcodes depending on model
 
-### Intel Quick Sync (QSV)
+### Intel Quick Sync (QSV) — DEPRECATED
+**Warning:** Intel QSV was deprecated and removed from the transcoder in Flussonic v25.09. Use NVIDIA NVENC instead.
 ```
-stream qsv_stream {
-  input rtsp://camera:554/stream;
-  transcoder hw=qsv vb=2000k ab=128k;
-}
+# NO LONGER SUPPORTED as of v25.09
+# transcoder hw=qsv vb=2000k ab=128k;
 ```
 
 ### Device Selection
@@ -98,9 +101,9 @@ transcoder deviceid=0 hw=nvenc vb=2000k;
 ```
 
 ### GPU vs CPU
-- GPU: Higher throughput, lower latency, multiple streams
+- GPU (NVENC): Higher throughput, lower latency, multiple streams
 - CPU: More flexible for complex transcoding
-- Hybrid: Use GPU for encoding, CPU for other processing
+- Note: Intel QSV was removed in v25.09. Only NVIDIA NVENC is supported for GPU acceleration.
 
 ## Output Profiles
 
@@ -144,7 +147,7 @@ size=1280x-2
 
 **H.265 (HEVC)**
 ```
-transcoder vcodec=hevc vb=2000k;
+transcoder vcodec=h265 vb=2000k;
 ```
 - Better compression (25-50% vs H.264)
 - Limited browser support (Chrome 107+)
@@ -188,7 +191,7 @@ transcoder vb=2000k burn='{
 
 **Text via API:**
 ```bash
-curl -u admin:pass -X PUT http://localhost/api/v3/streams/demo \
+curl -u admin:pass -X PUT http://localhost/streamer/api/v3/streams/demo \
   -H "Content-Type: application/json" \
   -d '{"transcoder": {"global": {"burn": {
     "text": {
@@ -241,7 +244,7 @@ stream copy_stream {
 ```
 stream coder_stream {
   input rtsp://camera:554/stream;
-  transcoder hw=nvenc vb=2000k ab=128k deinterlace=yadif;
+  transcoder hw=nvenc vb=2000k ab=128k deinterlace=true deinterlace_rate=frame;
 }
 ```
 
@@ -293,13 +296,13 @@ stream coder_stream {
 nvidia-smi
 
 # Verify process sees GPU
-curl http://localhost/api/v3/system/info | jq '.gpu'
+curl http://server/streamer/api/v3/system/info | jq '.gpu'
 ```
 
 ### Commands
 ```bash
 # Check transcoder status
-curl http://localhost/api/v3/streams/mystream | jq '.transcoder'
+curl http://server/streamer/api/v3/streams/mystream | jq '.transcoder'
 
 # View logs
 tail -f /var/log/flussonic/flussonic.log

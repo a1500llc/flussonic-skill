@@ -44,19 +44,29 @@ input rtmp://streaming-server:1935/app/stream;
 
 **SRT (Secure Reliable Transport)**
 ```
-input srt://0.0.0.0:1234;              # Listen
-input srt://remote-server:1234;        # Connect
+# Caller mode (Flussonic pulls from remote SRT source):
+input srt://REMOTE-IP:8888 streamid="#!::m=request,r=stream_name";
+
+# Listener mode (accept incoming SRT publish):
+# Use publish:// + srt_publish block:
+stream my_srt {
+  input publish://;
+  srt_publish {
+    port 9998;
+    passphrase 0123456789;
+  }
+}
 ```
-- Port: configurable
+- Port: configurable per-stream or global
 - Codecs: H.264, H.265, VP8/9, AV1
-- Encryption, QoS
-- Low-latency reliable
+- Encryption via passphrase (10-79 chars)
+- Low-latency reliable transport
+
+Note: `srt://listen:PORT` and `mode=caller/listener` are NOT valid Flussonic syntax.
 
 **WebRTC**
 ```
-input publish:// {
-  webrtc;
-}
+input publish://;
 ```
 - Port: 8080 (default)
 - Codecs: H.264, VP8/9, AV1
@@ -158,12 +168,12 @@ rtmp://server:1935/live/stream
 **WebRTC Playback**
 ```
 http://server/stream/embed.html
-http://server/api/v3/streams/stream/webrtc
+http://server/streamer/api/v3/streams/stream/webrtc
 ```
 
 **Multicast UDP**
 ```
-output push://udp://239.0.0.1:1234;
+push udp://239.0.0.1:1234;
 ```
 
 ## RTMP Protocol
@@ -202,36 +212,57 @@ ffmpeg -i input.mp4 -c:v libx265 -c:a copy -f flv \
 
 ### SRT Connection Modes
 
-**Listener (Server)**
+**Caller (Flussonic pulls from remote SRT source):**
 ```
-input srt://listen:1234;
+input srt://REMOTE-IP:8888 streamid="#!::m=request,r=stream_name";
+input srt://REMOTE-IP:9999 passphrase=0987654321 streamid="#!::m=request";
 ```
 
-**Caller (Client)**
+**Listener (Accept incoming SRT publish):**
 ```
-input srt://remote-server:1234;
-output push://srt://destination:1234;
+# Global shared port:
+srt_publish {
+  port 9998;
+  passphrase 0123456789;
+}
+stream my_srt { input publish://; }
+
+# Per-stream port:
+stream my_srt {
+  input publish://;
+  srt_publish { port 9998; }
+}
+```
+
+**SRT Output (push):**
+```
+push srt://destination:1234;
+```
+
+**SRT Playback port:**
+```
+stream my_stream {
+  srt_play { port 9300; }
+}
 ```
 
 ### SRT Parameters
-```
-srt://server:1234?param1=value1&param2=value2
-```
 
 **Key Parameters:**
-- `passphrase=SECRET` - AES encryption
-- `latency=200` - buffer in milliseconds
-- `mode=connect/listen` - connection mode
-- `congest_ctrl=live/file` - congestion control
-- `sndbuf=1024000` - send buffer (bytes)
-- `rcvbuf=1024000` - receive buffer (bytes)
-- `maxbw=1000000` - max bandwidth (bps)
+- `passphrase=SECRET` — AES encryption (10-79 characters)
+- `latency=200` — packet delivery buffer in milliseconds (default 120)
+- `enforcedencryption=true` — require matching encryption
+- `timeout=N` — data transmission timeout (seconds)
+- `connect_timeout=N` — connection timeout (seconds)
+- `linger=180` — socket linger time (seconds)
 
-### SRT Encryption
+### SRT Streamid Format
 ```
-input srt://listen:1234?passphrase=MySecretKey;
-output push://srt://server:1234?passphrase=MySecretKey;
+#!::m=request,r=stream_name    # Pull from remote
+#!::m=publish,r=stream_name    # Push to remote
 ```
+
+Note: `mode=connect/listen` parameter is NOT valid in Flussonic SRT URLs. Use the appropriate config directives instead.
 
 ## HLS Protocol
 
@@ -289,7 +320,7 @@ Player selects quality based on:
 ### WebRTC Connection
 ```
 # Browser to Flussonic
-http://server/api/v3/streams/stream/webrtc
+http://server/streamer/api/v3/streams/stream/webrtc
 
 # Direct embed
 http://server/stream/embed.html

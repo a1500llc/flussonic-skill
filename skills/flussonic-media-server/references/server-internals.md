@@ -336,7 +336,7 @@ end)
 - `input_availability` alerts
 - ClearKey DRM for DASH
 - Flapping stream alerts
-- Intel QSV deprecated (removed from transcoder)
+- Intel QSV deprecated and **removed** from the transcoder. Only NVIDIA NVENC is supported for GPU acceleration
 - Multiplexer ad cue accuracy metrics
 
 ### v25.08 (August 2025)

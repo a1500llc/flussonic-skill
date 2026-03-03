@@ -13,22 +13,33 @@
 
 ### Ubuntu Installation
 ```bash
+# Option 1: Download and review before executing
+curl -sSf https://flussonic.com/public/install.sh -o install_flussonic.sh
+less install_flussonic.sh   # Review the script contents
+bash install_flussonic.sh
+service flussonic start
+
+# Option 2: Direct install (official method, less secure)
 curl -sSf https://flussonic.com/public/install.sh | sh
 service flussonic start
 ```
+
+**Security note:** Piping remote scripts directly to `sh` bypasses review. Always prefer downloading and inspecting the script first (Option 1).
 
 ### RPM-based Systems (CentOS/RedHat)
 ```bash
 cat > /etc/yum.repos.d/Flussonic.repo <<'YUMEOF'
 [flussonic]
 name=Flussonic
-baseurl=http://apt.flussonic.com/rpm
+baseurl=https://apt.flussonic.com/rpm
 enabled=1
-gpgcheck=0
+gpgcheck=1
 YUMEOF
 yum -y install flussonic-erlang flussonic flussonic-transcoder
 service flussonic start
 ```
+
+**Security note:** Always use HTTPS for repository URLs and enable `gpgcheck=1` to verify package signatures.
 
 ### Activation
 1. Start service: `service flussonic start`
@@ -119,15 +130,24 @@ https 443 { api false; }
 ### SSL Certificate Generation
 ```bash
 cd /etc/flussonic
-openssl genrsa -des3 -out streamer.key 1024
+# Generate 4096-bit RSA key (minimum 2048-bit; never use 1024-bit)
+openssl genrsa -out streamer.key 4096
+chmod 600 streamer.key
 openssl req -new -key streamer.key -out streamer.csr
-mv streamer.key streamer.key.org
-openssl rsa -in streamer.key.org -out streamer.key
 openssl x509 -req -days 365 -in streamer.csr -signkey streamer.key -out streamer.crt
+rm streamer.csr
 ```
 
-### Let's Encrypt Certificates
-Supported via built-in integration. Configure in UI under TLS-tunneled protocols.
+**Security notes:**
+- Use at least 2048-bit RSA keys (4096 recommended). 1024-bit is considered insecure.
+- Set `chmod 600` on private keys to restrict access to root only.
+- For production, use Let's Encrypt or a trusted CA instead of self-signed certificates.
+
+### Let's Encrypt Certificates (Recommended for Production)
+Flussonic has built-in Let's Encrypt support. Configure in UI under TLS settings, or via the private API:
+```bash
+curl -u user:pass -X POST http://server/streamer/api/v3/tls/letsencrypt
+```
 
 ## Performance Tuning
 
@@ -151,7 +171,8 @@ Supported via built-in integration. Configure in UI under TLS-tunneled protocols
 
 ### License Key
 - Obtained from: my.flussonic.com
-- Requires permanent internet connection for activation
+- Online activation requires internet connectivity
+- Offline activation available via `GET /streamer/api/v3/license/request` (generates a request file for manual activation)
 - License tied to hardware MAC address
 - CPU and connection limits based on license tier
 
@@ -159,6 +180,7 @@ Supported via built-in integration. Configure in UI under TLS-tunneled protocols
 - Enter license during first-run UI setup
 - Or configure in `/etc/flussonic/flussonic.conf`
 - Check license status in UI: Config > Settings > License
+- For air-gapped environments, use the offline activation API endpoint
 
 ## Troubleshooting
 

@@ -71,26 +71,18 @@ stream protected {
 
 ## Token-Based Auth
 
-### Generate Token
-```bash
-curl -u admin:pass -X POST \
-  http://localhost/api/v3/tokens \
-  -H "Content-Type: application/json" \
-  -d '{
-    "name": "viewer1",
-    "streams": ["camera1", "camera2"],
-    "expires": 3600
-  }'
-```
+Flussonic implements token-based authentication via **auth backends** (on_play/on_publish callbacks) or **Lua scripts**, NOT through a token CRUD API.
 
-### Response
-```json
-{
-  "token": "abc123def456",
-  "expires": "2024-02-25T15:30:00Z",
-  "streams": ["camera1", "camera2"]
+### Auth Backend (Middleware Callback)
+Configure stream to call an external auth server:
+```
+stream protected_stream {
+  input rtsp://camera:554/stream;
+  on_play http://auth-server/verify;
 }
 ```
+
+When a viewer requests playback, Flussonic calls the auth backend with stream name, token, IP, etc. The auth server responds with 200 (allow) or 403 (deny).
 
 ### Playback with Token
 ```
@@ -98,95 +90,76 @@ http://server/camera1/index.m3u8?token=abc123def456
 http://server/camera1/index.ts?token=abc123def456
 ```
 
-### Token Parameters
-- `name` - token identifier
-- `streams` - allowed streams (array)
-- `expires` - expiration time (seconds or ISO timestamp)
-- `description` - optional notes
-
-### Token Management
-```bash
-# List tokens
-curl -u admin:pass http://localhost/api/v3/tokens
-
-# Revoke token
-curl -u admin:pass -X DELETE \
-  http://localhost/api/v3/tokens/abc123def456
-
-# Refresh token
-curl -u admin:pass -X PUT \
-  http://localhost/api/v3/tokens/abc123def456 \
-  -d '{"expires": 7200}'
+### Lua-Based Token Auth
+Flussonic supports Lua scripts for custom token validation:
 ```
+# In flussonic.conf, reference a Lua script
+# Lua scripts stored in /etc/flussonic/ or /opt/flussonic/lua/
+```
+
+### Auth Backend API
+```bash
+# Manage auth backends
+GET /streamer/api/v3/auth_backends
+PUT /streamer/api/v3/auth_backends/{name}
+DELETE /streamer/api/v3/auth_backends/{name}
+
+# View sessions
+GET /streamer/api/v3/sessions
+DELETE /streamer/api/v3/sessions/{id}
+```
+
+Note: The endpoints `/api/v3/tokens`, `POST /api/v3/tokens`, `DELETE /api/v3/tokens/{id}` do NOT exist. Token management is done through auth backends and Lua scripts.
 
 ## Secure Link
 
-### Time-Limited URL
-Generate URLs with expiration:
-
-```bash
-# Generate secure link
-curl -u admin:pass -X POST \
-  http://localhost/api/v3/secure-links \
-  -d "stream=camera1&duration=3600&limit=1"
+Secure links use Lua-based token generation (securetoken.lua) with time-limited URLs and IP binding:
+```
+http://server/camera1/index.m3u8?token=GENERATED_TOKEN
 ```
 
-### Parameters
-- `stream` - stream name
-- `duration` - validity in seconds
-- `limit` - max downloads (optional)
-- `ip` - restrict to IP (optional)
-
-### Playback URL
-```
-http://server/camera1/index.m3u8?secure_token=xyz&expires=1234567890
-```
+Token validation is done via Lua scripts or auth backends. See `references/server-internals.md` for Lua scripting API details.
 
 ## DRM Systems
 
-### Widevine Protection
+Flussonic uses the **CPIX standard** for multi-DRM protection. Instead of configuring each DRM system separately, you configure a CPIX keyserver that handles Widevine, PlayReady, and FairPlay simultaneously.
+
+### CPIX DRM (Recommended — Handles All DRM Systems)
 ```
-stream protected_widevine {
-  input rtsp://camera:554/stream;
-  drm widevine {
-    license_url = "https://license.server.com/widevine";
-    customer_id = "YOUR_ID";
-    user_id = "USER_123";
-  };
+stream protected_channel {
+  input udp://239.0.0.1:1234;
+  drm cpix keyserver=http://drm-server/api/drm/cpix?client=myapp&clientToken=SECRET resource_id=protected_channel;
+  protocols dash hls;
 }
 ```
 
-### PlayReady Protection
+This single directive enables:
+- **Widevine** — for Chrome, Android, smart TVs
+- **PlayReady** — for Edge, Windows, Xbox
+- **FairPlay** — for Safari, iOS, Apple TV
+
+The CPIX keyserver manages key rotation, content keys, and license delivery for all DRM systems.
+
+### ClearKey DRM (for DASH, since v25.09)
 ```
-stream protected_playready {
-  input rtsp://camera:554/stream;
-  drm playready {
-    license_url = "https://license.server.com/playready";
-    custom_data = "optional_metadata";
-  };
+stream clearkey_stream {
+  input udp://239.0.0.1:1234;
+  drm clearkey;
+  protocols dash;
 }
 ```
 
-### FairPlay Protection (Apple)
+### Real-World DRM Config Example
+From production Flussonic servers:
 ```
-stream protected_fairplay {
-  input rtsp://camera:554/stream;
-  drm fairplay {
-    license_url = "https://license.server.com/fairplay";
-    certificate_url = "https://cert.server.com/cert";
-  };
+stream Live_1196 {
+  input udp://239.77.16.88:8999/172.17.202.18?sources=10.77.22.88&buffer_size=8M;
+  drm cpix keyserver=http://localhost:8888/api/drm/cpix?client=dtvgo&clientToken=flussonic-TOKEN resource_id=Live_1196;
+  protocols dash hls;
 }
 ```
 
-### Multi-DRM
-```
-stream multi_drm {
-  input rtsp://camera:554/stream;
-  drm widevine { license_url = "https://lic.server/widevine"; };
-  drm playready { license_url = "https://lic.server/playready"; };
-  drm fairplay { license_url = "https://lic.server/fairplay"; };
-}
-```
+Note: The syntax `drm widevine { license_url = "..."; }` with separate blocks per DRM vendor is NOT how modern Flussonic configures DRM. Use `drm cpix keyserver=URL resource_id=NAME;` instead.
 
 ## CORS Configuration
 
@@ -233,49 +206,40 @@ stream geo_restricted {
 }
 ```
 
-### Custom Auth Middleware
-Flussonic can call external auth service:
+### Auth Backend (on_play / on_publish)
+Flussonic calls an external auth server when viewers connect:
 ```
 stream custom_auth {
   input rtsp://camera:554/stream;
-  auth middleware;
-  middleware_url = "http://auth-server/verify";
+  on_play http://auth-server/verify;
+  on_publish http://auth-server/verify;
 }
 ```
 
-**Auth Server Request:**
-```
-POST /verify HTTP/1.1
-Host: auth-server
-Content-Type: application/x-www-form-urlencoded
-
-token=TOKEN&stream=STREAM&ip=IP&session_id=SID
-```
-
-**Response:**
+**Auth Server receives the request with stream/token/IP info and responds:**
 ```
 200 OK          (allow access)
-401 Unauthorized (deny access)
+403 Forbidden   (deny access)
 ```
 
 ## Troubleshooting
 
 ### Token Not Working
 ```bash
-# Check token exists
-curl -u admin:pass http://localhost/api/v3/tokens | grep token_value
+# Check auth backend configuration
+curl -u user:pass http://server/streamer/api/v3/auth_backends
 
-# Test with token
-curl "http://localhost/api/v3/streams?token=YOUR_TOKEN"
+# Check active sessions
+curl -u user:pass http://server/streamer/api/v3/sessions
 
-# Check token expiration
-curl -u admin:pass http://localhost/api/v3/tokens/TOKEN_ID
+# Test stream access with token
+curl "http://server/stream/index.m3u8?token=YOUR_TOKEN"
 ```
 
 ### IP Blocked
 ```bash
 # Check listener config
-curl http://localhost/api/v3/config | jq '.listeners'
+curl -u user:pass http://server/streamer/api/v3/config | jq '.listeners'
 
 # Verify firewall
 iptables -L | grep REJECT
@@ -303,15 +267,15 @@ curl -i -H "Origin: https://player.example.com" \
 ### Commands
 ```bash
 # Check auth config
-curl http://localhost/api/v3/config | jq '.auth'
+curl -u user:pass http://server/streamer/api/v3/config | jq '.auth'
 
-# List active tokens
-curl -u admin:pass http://localhost/api/v3/tokens
+# List active sessions
+curl -u user:pass http://server/streamer/api/v3/sessions
 
 # Check CORS config
-curl http://localhost/api/v3/config | jq '.cors'
+curl -u user:pass http://server/streamer/api/v3/config | jq '.cors'
 
 # Test auth endpoint
-curl -u admin:pass http://localhost/api/v3/streams/stream1 | \
+curl -u user:pass http://server/streamer/api/v3/streams/stream1 | \
   jq '.auth'
 ```

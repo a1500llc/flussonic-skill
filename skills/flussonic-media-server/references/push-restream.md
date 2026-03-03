@@ -22,31 +22,27 @@ Push/restreaming allows sending streams from Flussonic to external platforms:
 ## Configuration
 
 ### Basic Push
+In Flussonic config, push uses the `push` directive (NOT `push`):
 ```
 stream mystream {
   input rtsp://camera:554/stream;
-  output push://rtmp://destination-server:1935/app/stream;
+  push rtmp://destination-server:1935/app/stream;
 }
 ```
 
 ### Multiple Destinations
 ```
-stream multicast_push {
+stream multi_push {
   input rtsp://camera:554/stream;
-  output push://rtmp://server1:1935/app/stream;
-  output push://rtmp://server2:1935/app/stream;
-  output push://rtmp://server3:1935/app/stream;
+  push rtmp://server1:1935/app/stream;
+  push rtmp://server2:1935/app/stream;
+  push rtmp://server3:1935/app/stream;
 }
 ```
 
 ### Push Parameters
 ```
-output push://rtmp://server:1935/app/stream \
-  retry_timeout=10 \
-  retry_count=5 \
-  timeout=30 \
-  buffer=1024 \
-  backlog=unlimited;
+push rtmp://server:1935/app/stream retry_timeout=10 timeout=30;
 ```
 
 **Parameters:**
@@ -62,7 +58,7 @@ output push://rtmp://server:1935/app/stream \
 ```
 stream live {
   input rtsp://camera:554/stream;
-  output push://rtmp://rtmp-server.com:1935/live/camera1;
+  pushrtmp://rtmp-server.com:1935/live/camera1;
 }
 ```
 
@@ -70,13 +66,13 @@ stream live {
 ```
 stream secure_push {
   input rtsp://camera:554/stream;
-  output push://rtmps://secure-server.com:443/app/stream;
+  pushrtmps://secure-server.com:443/app/stream;
 }
 ```
 
 ### With Credentials
 ```
-output push://rtmp://user:password@server:1935/app/stream;
+pushrtmp://user:password@server:1935/app/stream;
 ```
 
 ### Enhanced RTMP (HEVC/AV1)
@@ -84,7 +80,7 @@ output push://rtmp://user:password@server:1935/app/stream;
 stream high_quality {
   input webrtc://;
   transcoder vcodec=hevc vb=5000k preset=fast;
-  output push://rtmp://youtube-server/live/stream-key;
+  pushrtmp://youtube-server/live/stream-key;
 }
 ```
 
@@ -94,13 +90,13 @@ stream high_quality {
 ```
 stream srt_push {
   input rtsp://camera:554/stream;
-  output push://srt://remote-server:1234;
+  pushsrt://remote-server:1234;
 }
 ```
 
 ### SRT with Options
 ```
-output push://srt://remote-server:1234?passphrase=secret&latency=200&mode=connect;
+pushsrt://remote-server:1234?passphrase=secret&latency=200&mode=connect;
 ```
 
 **SRT Options:**
@@ -115,13 +111,13 @@ output push://srt://remote-server:1234?passphrase=secret&latency=200&mode=connec
 ```
 stream hls_push {
   input rtsp://camera:554/stream;
-  output push://http://cdn-server:8080/upload/;
+  pushhttp://cdn-server:8080/upload/;
 }
 ```
 
 ### HTTP PUT
 ```
-output push://http://api-server/streams/mystream/segment?token=xyz;
+pushhttp://api-server/streams/mystream/segment?token=xyz;
 ```
 
 ## Social Platform Integration
@@ -131,7 +127,7 @@ output push://http://api-server/streams/mystream/segment?token=xyz;
 stream youtube_live {
   input rtsp://camera:554/stream;
   transcoder vb=5000k preset=fast;
-  output push://rtmp://a.rtmp.youtube.com/live2/YOUR_STREAM_KEY;
+  pushrtmp://a.rtmp.youtube.com/live2/YOUR_STREAM_KEY;
 }
 ```
 
@@ -144,7 +140,7 @@ stream youtube_live {
 ```
 stream facebook_live {
   input rtsp://camera:554/stream;
-  output push://rtmps://live-api-s.facebook.com:443/rtmp/YOUR_STREAM_KEY;
+  pushrtmps://live-api-s.facebook.com:443/rtmp/YOUR_STREAM_KEY;
 }
 ```
 
@@ -152,7 +148,7 @@ stream facebook_live {
 ```
 stream twitch_live {
   input rtsp://camera:554/stream;
-  output push://rtmp://live.twitch.tv/app/YOUR_STREAM_KEY;
+  pushrtmp://live.twitch.tv/app/YOUR_STREAM_KEY;
 }
 ```
 
@@ -160,9 +156,9 @@ stream twitch_live {
 ```
 stream multi_platform {
   input rtsp://camera:554/stream;
-  output push://rtmp://a.rtmp.youtube.com/live2/yt_key;
-  output push://rtmps://live-api-s.facebook.com:443/rtmp/fb_key;
-  output push://rtmp://live.twitch.tv/app/twitch_key;
+  pushrtmp://a.rtmp.youtube.com/live2/yt_key;
+  pushrtmps://live-api-s.facebook.com:443/rtmp/fb_key;
+  pushrtmp://live.twitch.tv/app/twitch_key;
 }
 ```
 
@@ -177,7 +173,7 @@ stream optimized_push {
   transcoder vb=2500k size=1280x720 preset=fast ab=128k;
   
   # Push to CDN
-  output push://rtmp://cdn-server:1935/app/stream;
+  pushrtmp://cdn-server:1935/app/stream;
   
   # Also provide HLS locally
   hls;
@@ -189,7 +185,7 @@ stream optimized_push {
 template live- {
   input rtsp://camera:554/stream;
   
-  output push://rtmp://backup-server:1935/app/$name$;
+  pushrtmp://backup-server:1935/app/$name$;
   
   hls;
 }
@@ -197,8 +193,8 @@ template live- {
 
 ### Push with Failover
 ```
-output push://rtmp://primary:1935/app/stream retry_count=-1 retry_timeout=5;
-output push://rtmp://secondary:1935/app/stream retry_count=-1 retry_timeout=10;
+pushrtmp://primary:1935/app/stream retry_count=-1 retry_timeout=5;
+pushrtmp://secondary:1935/app/stream retry_count=-1 retry_timeout=10;
 ```
 
 **Behavior:**
@@ -210,7 +206,7 @@ output push://rtmp://secondary:1935/app/stream retry_count=-1 retry_timeout=10;
 ```
 stream multicast_out {
   input rtsp://camera:554/stream;
-  output push://udp://239.0.0.1:1234;
+  pushudp://239.0.0.1:1234;
 }
 ```
 
@@ -277,7 +273,7 @@ iptables -L | grep 1935
 ### Commands
 ```bash
 # Check push status
-curl http://localhost/api/v3/streams/mystream | jq '.outputs'
+curl -u user:pass http://server/streamer/api/v3/streams/mystream | jq '.outputs'
 
 # Monitor push connections
 netstat -tnp | grep push

@@ -24,22 +24,22 @@ VOD allows playing pre-recorded video files on demand. Features:
 ### Basic VOD Location
 ```
 vod movies {
-  location = /storage/videos;
+  location /storage/videos;
 }
 ```
 
 ### Multiple VOD Locations
 ```
 vod movies {
-  location = /storage/movies;
+  location /storage/movies;
 }
 
 vod tv_shows {
-  location = /storage/shows;
+  location /storage/shows;
 }
 
 vod archives {
-  location = /dvr/archives;
+  location /dvr/archives;
 }
 ```
 
@@ -49,7 +49,7 @@ URL prefix maps to directory:
 # URL: http://server/movies/bigbuckbunny.mp4
 # Maps to: /storage/videos/bigbuckbunny.mp4
 vod movies {
-  location = /storage/videos;
+  location /storage/videos;
 }
 ```
 
@@ -260,10 +260,10 @@ df -h /storage/
 ### Commands
 ```bash
 # Check VOD configuration
-curl http://localhost/api/v3/vods | jq
+curl -u user:pass http://server/streamer/api/v3/vods | jq
 
 # List files
-curl http://localhost/api/v3/vods/movies | jq
+curl -u user:pass http://server/streamer/api/v3/vods/movies | jq
 
 # Check file details
 ffprobe http://localhost/movies/file.mp4 -show_format

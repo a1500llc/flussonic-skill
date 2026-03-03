@@ -33,16 +33,21 @@ Flussonic uses a text config file (`/etc/flussonic/flussonic.conf`) or the web U
 
 - **stream** — A named live/VOD stream with input sources, processing, and output settings
 - **template** — Reusable configuration applied to streams matching a pattern
-- **dvr** — Named DVR storage location with path and retention
+- **dvr** — Named global DVR storage config (must be defined before streams reference it)
 - **cluster** — Server clustering configuration for redundancy and scaling
 
-Basic stream config pattern:
+Basic config pattern (DVR requires a global `dvr` block, then streams reference it with `@name`):
 ```
+# Global DVR config (define storage location)
+dvr storage1 {
+  root /mnt/storage;
+}
+
 stream channel1 {
   input udp://239.0.0.1:1234;
   input tshttp://backup-server/channel1/mpegts backup;
   transcoder vb=4000k size=1920x1080 ab=128k;
-  dvr /mnt/storage/channel1 retention=7d;
+  dvr @storage1 7d;
   push rtmp://cdn.example.com/live/channel1;
 }
 ```
@@ -51,8 +56,14 @@ stream channel1 {
 
 Flussonic exposes two APIs:
 
-1. **Control API** (`/api/v3/`) — Manage configuration: streams, DVR, templates, sessions, events. Uses Basic auth.
+1. **Control API** (`/streamer/api/v3/`) — Manage configuration: streams, DVR, templates, sessions, events. Uses Basic auth (edit_auth/view_auth credentials).
 2. **Streaming API** — Media delivery endpoints: HLS (`/stream/index.m3u8`), DASH (`/stream/index.mpd`), WebRTC, thumbnails, etc.
+
+**Important API patterns:**
+- Stream creation/update uses **PUT** (upsert): `PUT /streamer/api/v3/streams/{name}`
+- JSON body uses `"inputs": [{"url": "..."}]` (array of objects), NOT `"input": "string"`
+- Monitoring: `/streamer/api/v3/monitoring/liveness` and `/streamer/api/v3/monitoring/readiness`
+- Stats: `/streamer/api/v3/config/stats`
 
 ## When to Read Reference Files
 
@@ -92,8 +103,11 @@ stream live_channel {
   # Transcode to multibitrate (multiple vb= on one line = multiple video tracks)
   transcoder vb=4000k size=1920x1080 vb=2000k size=1280x720 vb=800k size=640x360 ab=128k;
 
-  # Record with 7 days retention
-  dvr /mnt/storage/live_channel retention=7d;
+  # Record with 7 days retention (references global dvr block)
+  dvr @storage1 7d;
+
+  # Enable output protocols
+  protocols dash hls;
 
   # Push to CDN
   push rtmp://cdn.example.com/live/channel;
@@ -102,12 +116,12 @@ stream live_channel {
 
 ### Source Failover
 
-Configure multiple sources with automatic failover:
+Configure multiple sources with automatic failover (priority by order, first = primary):
 ```
 stream resilient_channel {
-  input srt://primary-encoder:9000 mode=caller;
-  input rtmp://backup-encoder/live/stream backup;
-  input fake://black silence;  # Black screen if all fail
+  input srt://primary-encoder:9000 streamid="#!::m=request,r=resilient_channel";
+  input rtmp://backup-encoder/live/stream;
+  input fake://fake;  # Test pattern if all sources fail
 }
 ```
 
@@ -116,23 +130,30 @@ stream resilient_channel {
 ```
 stream gpu_channel {
   input rtsp://camera:554/stream;
-  transcoder hw=nvenc vb=5000k size=1920x1080 deinterlace=yadif vb=2500k size=1280x720 vb=1000k size=640x360 ab=128k;
+  transcoder hw=nvenc deviceid=0 vb=5000k size=1920x1080 deinterlace=true deinterlace_rate=frame vb=2500k size=1280x720 vb=1000k size=640x360 ab=128k;
 }
 ```
+
+Note: Intel QSV was deprecated in v25.09 and removed from the transcoder. Use NVIDIA NVENC for hardware acceleration.
 
 ### Cluster Setup
 
 ```
-# On origin server:
+# All peers share the same cluster_key
+# On all servers:
 cluster_key mySecretKey;
-peer origin1 { cluster_key mySecretKey; }
+peer server1.example.com;
+peer server2.example.com;
 
-# On edge servers:
-cluster_key mySecretKey;
-source origin1 { url http://origin1:80; }
-
+# Stream with cluster_ingest (auto-distributes capture across peers)
 stream channel1 {
-  input cluster://origin1/channel1;
+  input rtsp://camera:554/stream;
+  cluster_ingest;
+}
+
+# Or pull from another peer:
+stream channel1 {
+  input m4f://origin-server/channel1;
 }
 ```
 
@@ -154,6 +175,50 @@ For monitoring a live ingest + transcode + CDN restream workflow, the critical m
 
 Read `references/retroview-monitoring.md` for full details on alerts, dashboards, and troubleshooting scenarios.
 
+### DRM Protection (CPIX)
+
+Flussonic uses the CPIX standard for multi-DRM. Config uses a single `drm cpix` directive with a keyserver:
+```
+stream protected_channel {
+  input udp://239.0.0.1:1234;
+  drm cpix keyserver=http://drm-server/api/drm/cpix?client=myapp&clientToken=SECRET resource_id=protected_channel;
+  protocols dash hls;
+}
+```
+This enables Widevine, PlayReady, and FairPlay simultaneously through the CPIX keyserver.
+
+### SRT Ingest & Output
+
+**SRT Publish (receive incoming SRT streams):**
+```
+# Global shared SRT publish port
+srt_publish {
+  port 9998;
+  passphrase 0123456789;
+}
+
+stream my_srt_stream {
+  input publish://;
+}
+```
+
+**Per-stream SRT play (output):**
+```
+stream my_stream {
+  input udp://239.0.0.1:1234;
+  srt_play {
+    port 9300;
+  }
+}
+```
+
+**SRT caller (pull from remote SRT source):**
+```
+stream srt_pull {
+  input srt://remote-server:8888 streamid="#!::m=request,r=stream_name";
+}
+```
+
 ## Response Guidelines
 
 When helping users:
@@ -164,6 +229,7 @@ When helping users:
 4. **Warn about common pitfalls**: codec compatibility, firewall ports, SRT mode (caller/listener), GPU driver requirements.
 5. **Reference official docs** — Point users to `https://flussonic.com/doc/` for the specific topic when appropriate.
 6. **Consider the user's scale** — Ask if they haven't said: how many streams? what bitrate? what hardware? This matters for performance tuning.
+7. **Never directly modify system files** — Show config examples for the user to apply themselves. Do not write to `/etc/flussonic/flussonic.conf` or other system paths, run `service` commands, or change firewall rules directly. Present the config/commands and let the user execute them on their server. Use the API (`PUT /streamer/api/v3/streams/{name}`) when the user wants to make changes programmatically.
 
 ## Important Ports
 
@@ -184,5 +250,6 @@ When helping users:
 - **High CPU**: Enable hardware transcoding (NVENC/QSV), reduce resolution/bitrate, check if transcoding is needed.
 - **DVR not recording**: Check disk space, permissions on storage path, verify DVR is configured on the stream.
 - **Playback stuttering**: Check bitrate vs. available bandwidth, consider ABR profiles, check server CPU load.
-- **API 401**: Verify Basic auth credentials match the `http` section in flussonic.conf.
-- **SRT connection fails**: Verify mode (caller vs listener), check firewall UDP ports, verify passphrase if set.
+- **API 401**: Verify Basic auth credentials match edit_auth/view_auth in flussonic.conf. API base path is `/streamer/api/v3/`.
+- **SRT connection fails**: Check firewall UDP ports, verify passphrase (10-79 chars), check streamid format for caller mode.
+- **API "authorization_failed"**: The v3 API requires edit_auth credentials. Use `-u user:pass` with curl.

@@ -20,43 +20,88 @@ DVR (Digital Video Recording) allows recording live streams to disk for later pl
 
 ## Configuration
 
-### Basic DVR Setup
+DVR requires two steps: (1) define a global `dvr` block with storage settings, then (2) reference it in streams with `@name`.
+
+### Step 1: Global DVR Config
 ```
-stream mystream {
-  input rtsp://camera:554/stream;
-  dvr;
+dvr my_storage {
+  root /mnt/archive;
 }
 ```
 
-### DVR with Custom Path
+For RAID setups with multiple disks:
 ```
-stream mystream {
-  input rtsp://camera:554/stream;
-  dvr /mnt/archive/mystream;
+dvr my_raid {
+  root /storage/raid;
+  raid 0;
+  metadata idx;
+  disk volume1;
+  disk volume2;
+  disk volume3;
 }
 ```
 
-### DVR with Retention Policy
+### Step 2: Reference DVR in Streams
 ```
 stream mystream {
   input rtsp://camera:554/stream;
-  dvr /mnt/archive/mystream retention=7d;
+  dvr @my_storage 7d;
 }
+```
+
+### Retention & Limits
+Retention and disk limits go after the `@name` reference:
+```
+dvr @my_storage 7d;           # 7 days retention
+dvr @my_storage 2d 97%;       # 2 days, max 97% disk usage
+dvr @my_storage 90% 5d;       # also accepts inverted order
+dvr @my_storage 3d 500G;      # 3 days, max 500GB
+dvr @my_storage;               # no retention limit (records indefinitely)
 ```
 
 **Retention Options:**
 - `1d`, `7d`, `30d` - days
 - `1h`, `24h` - hours
-- Disk space used (storage limit takes precedence)
+- `90%`, `97%` - max disk usage percentage
+- `500G`, `10G` - max storage size
+
+### DVR with Replication
+```
+dvr @my_storage 7d replicate;
+dvr @my_storage 7d replicate replication_port=8002;
+```
+
+### Cloud DVR (S3)
+```
+dvr cloud_storage {
+  root s3://accesskey:secretkey@endpoint/bucket;
+}
+
+stream mystream {
+  input udp://239.0.0.1:1234;
+  dvr @cloud_storage 10G;
+}
+```
+
+### Copy to secondary location
+```
+dvr @my_storage 7d;
+# Also supported: copy= syntax for backup
+dvr /storage copy=s3://key:secret@endpoint/bucket 10G;
+```
 
 ## Recording Streams
 
-### Multiple Profiles
-Record multiple bitrates for fallback:
+### Multiple Profiles with DVR
+Record multiple bitrates:
 ```
+dvr archive1 {
+  root /mnt/archive;
+}
+
 stream hd {
   input rtsp://camera:554/stream;
-  dvr /mnt/archive/hd;
+  dvr @archive1 7d;
   transcoder vb=5000k size=1920x1080 vb=2000k size=1280x720 vb=1000k size=640x480 ab=128k;
 }
 ```
@@ -67,12 +112,12 @@ stream hd {
 - Automatic index creation
 
 ### Status Check
-```
-# List active recordings
-curl http://localhost/api/v3/streams | jq '.[] | select(.dvr) | {name, dvr}'
+```bash
+# List DVR configurations
+curl -u user:pass http://server/streamer/api/v3/dvrs
 
-# View recording details
-curl http://localhost/api/v3/streams/mystream | jq '.dvr'
+# View stream DVR ranges
+curl -u user:pass http://server/streamer/api/v3/streams/mystream/dvr/ranges
 ```
 
 ## Storage
@@ -89,11 +134,22 @@ Example: 5000k * 86400s * 1 stream = 43.2 GB/day
          5000k * 86400s * 10 streams = 432 GB/day
 ```
 
-### Multiple Disks
+### Multiple Disks (Flussonic RAID)
+Use Flussonic's application-level RAID to manage multiple disks automatically:
 ```
-stream stream1 { dvr /mnt/disk1/stream1; }
-stream stream2 { dvr /mnt/disk2/stream2; }
-stream stream3 { dvr /mnt/disk1/stream3; }
+dvr my_raid {
+  root /storage;
+  raid 0;
+  metadata idx;
+  disk d1;
+  disk d2;
+  disk d3;
+  disk d4;
+  active 2;  # write to 2 disks simultaneously (saves power)
+}
+
+stream stream1 { input ...; dvr @my_raid 7d; }
+stream stream2 { input ...; dvr @my_raid 7d; }
 ```
 
 ### Monitoring Storage
@@ -138,12 +194,17 @@ http://FLUSSONIC-IP/mystream/timeshift.m3u8
 
 ### API Archive Query
 ```bash
-# List available segments
-curl http://localhost/api/v3/streams/mystream/segments
+# List available DVR ranges
+curl -u user:pass http://server/streamer/api/v3/streams/mystream/dvr/ranges
 
-# Get specific date range
-curl "http://localhost/api/v3/streams/mystream/segments?from=2024-02-15T14:00:00Z&to=2024-02-15T16:00:00Z"
+# Export DVR segment as MP4
+curl -u user:pass -X POST http://server/streamer/api/v3/streams/mystream/dvr/export
+
+# Check DVR consistency
+curl -u user:pass -X POST http://server/streamer/api/v3/streams/mystream/dvr/consistency_check
 ```
+
+Note: The endpoint `/api/v3/streams/{name}/segments` does NOT exist. Use `/streamer/api/v3/streams/{name}/dvr/ranges` instead.
 
 ## Archive Management
 
@@ -158,7 +219,7 @@ find /mnt/archive -type f -mtime +30 -delete
 ```bash
 # Download archive segment
 curl -o segment.ts \
-  "http://localhost/api/v3/streams/mystream/segments/20240215-143000.ts"
+  "http://server/mystream/archive-20240215-3600.ts"
 ```
 
 ### Convert Archive to VOD
@@ -204,7 +265,7 @@ df -h /mnt/archive
 ### Commands
 ```bash
 # Check DVR status
-curl http://localhost/api/v3/streams/mystream | grep -A 5 dvr
+curl -u user:pass http://server/streamer/api/v3/streams/mystream | grep -A 5 dvr
 
 # View recent archives
 ls -lht /mnt/archive/mystream/ | head

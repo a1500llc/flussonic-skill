@@ -39,32 +39,31 @@
 http://FLUSSONIC-IP/mystream/index.m3u8
 ```
 
-### HLS Parameters
+### HLS/DASH Configuration
+In Flussonic, protocols and segment parameters are set as top-level stream directives, NOT inside nested blocks:
 ```
 stream mystream {
   input rtsp://camera:554/stream;
-  hls {
-    segment_duration = 6;
-    window_size = 3;
-    segments_in_playlist = 3;
-  };
+  protocols hls dash;
+  segment_duration 2;
+  segment_count 30;
 }
 ```
 
 **Parameters:**
-- `segment_duration` - segment length in seconds (default 6)
-- `window_size` - segments to keep in memory (default 3)
-- `segments_in_playlist` - segments in playlist (default 3)
-- `bitrate_variant` - multibitrate (see below)
+- `segment_duration N` — segment length in seconds (e.g., 2)
+- `segment_count N` — number of segments to keep in playlist (e.g., 30)
+- `protocols hls dash` — enable specific output protocols
 
 ### Multibitrate HLS (Adaptive)
+When transcoding to multiple bitrates, HLS automatically creates a master playlist with all variants:
 ```
 stream hls_adaptive {
   input rtsp://camera:554/stream;
   transcoder vb=5000k size=1920x1080 vb=2500k size=1280x720 vb=1000k size=640x480 ab=128k;
-  hls {
-    variant = bitrate;
-  };
+  protocols hls dash;
+  segment_duration 2;
+  segment_count 30;
 }
 ```
 
@@ -77,47 +76,43 @@ stream.m3u8?bitrate=5000k
 stream.m3u8?bitrate=2500k
 ```
 
-### HLS Encryption (AES-128)
+### DRM-Protected HLS/DASH
+For DRM protection, use the CPIX standard:
 ```
-stream encrypted {
+stream protected {
   input rtsp://camera:554/stream;
-  hls {
-    encrypt = yes;
-    encrypt_key = "/path/to/key.bin";
-  };
+  drm cpix keyserver=http://drm-server/api/drm/cpix?client=myapp&clientToken=SECRET resource_id=protected;
+  protocols dash hls;
 }
 ```
 
 ## DASH Configuration
 
 ### Basic DASH
+DASH is enabled via the `protocols` directive:
 ```
 stream mystream {
   input rtsp://camera:554/stream;
-  dash {
-    segment_duration = 4;
-    window_size = 5;
-  };
+  protocols dash;
+  segment_duration 4;
 }
 ```
 
-**URL:** `http://FLUSSONIC-IP/mystream/manifest.mpd`
+**URL:** `http://FLUSSONIC-IP/mystream/index.mpd`
 
 ### Multibitrate DASH
 ```
 stream dash_multi {
   input rtsp://camera:554/stream;
   transcoder vb=5000k size=1920x1080 vb=2500k size=1280x720 vb=1000k size=640x480 ab=128k;
-  dash {
-    variant = bitrate;
-  };
+  protocols dash hls;
+  segment_duration 2;
 }
 ```
 
-### DASH Parameters
-- `segment_duration` - segment length (seconds)
-- `window_size` - max segments in playlist
-- `presentation_delay` - playback delay (ms)
+### Key Parameters
+- `segment_duration N` — segment length in seconds (top-level stream directive)
+- `segment_count N` — segments in playlist
 
 ## HTTP MPEG-TS
 
@@ -151,10 +146,11 @@ rtmp://FLUSSONIC-IP:1935/live/mystream
 ```
 
 ### RTMP Configuration
+RTMP playback is enabled via the `protocols` directive:
 ```
 stream mystream {
   input rtsp://camera:554/stream;
-  rtmp_play = yes;
+  protocols hls dash rtmp;
 }
 ```
 
@@ -176,14 +172,15 @@ Via web interface or embed:
 http://FLUSSONIC-IP/mystream/embed.html
 
 # WebRTC endpoint
-http://FLUSSONIC-IP/api/v3/streams/mystream/webrtc
+http://FLUSSONIC-IP/streamer/api/v3/streams/mystream/webrtc
 ```
 
 ### WebRTC Configuration
+WebRTC playback is enabled via the `protocols` directive:
 ```
 stream webrtc_stream {
   input rtsp://camera:554/stream;
-  webrtc = yes;
+  protocols hls dash webrtc;
 }
 ```
 
@@ -242,18 +239,17 @@ Duration (s) | Bitrate (kbps) | Segment Size (MB)
 - Large segments: higher latency, fewer requests
 
 ### ABR Settings
-For adaptive bitrate:
+Adaptive bitrate is automatic when transcoding to multiple quality levels.
+Configure transcoder with multiple `vb=` entries and enable protocols:
 ```
-hls {
-  bitrate_variant = yes;
-  variant = bitrate;
-}
+transcoder vb=5000k size=1920x1080 vb=2500k size=1280x720 vb=1000k size=640x360 ab=128k;
+protocols hls dash;
 ```
 
 ## Troubleshooting
 
 ### Video Not Playing
-- Check stream is active: curl http://localhost/api/v3/streams
+- Check stream is active: curl -u user:pass http://server/streamer/api/v3/streams
 - Verify protocol enabled: UI > Stream > Output
 - Test URL directly: `curl http://server/stream/index.m3u8`
 - Check firewall/ports
@@ -279,7 +275,7 @@ hls {
 ### Commands
 ```bash
 # Check playback status
-curl http://localhost/api/v3/streams/mystream | \
+curl -u user:pass http://server/streamer/api/v3/streams/mystream | \
   jq '.outputs'
 
 # View HLS playlist
@@ -289,5 +285,5 @@ curl http://localhost/mystream/index.m3u8
 ffplay http://localhost/mystream/index.ts
 
 # Monitor bitrate
-curl http://localhost/api/v3/stats | jq '.streams'
+curl -u user:pass http://server/streamer/api/v3/stats | jq '.streams'
 ```

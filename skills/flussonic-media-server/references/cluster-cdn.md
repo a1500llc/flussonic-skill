@@ -177,7 +177,7 @@ peer transcoder4;
 
 stream dvb01 {
   input m4f://grabber1/dvb01;
-  transcoder vb=1000k deinterlace=yadif ab=128k;
+  transcoder vb=1000k deinterlace=true deinterlace_rate=frame ab=128k;
   cluster_ingest;
 }
 ```
@@ -198,22 +198,22 @@ When transcoder fails:
 ### Cluster Status
 ```bash
 # Check peer status
-curl http://localhost/api/v3/peers
+curl -u user:pass http://server/streamer/api/v3/peers
 
 # Get cluster key info
-curl http://localhost/api/v3/config | grep cluster
+curl -u user:pass http://server/streamer/api/v3/config | grep cluster
 ```
 
 ### Stream Distribution
 ```bash
 # See which peer handles each stream
-curl http://localhost/api/v3/streams | jq '.[] | {name, peer}'
+curl -u user:pass http://server/streamer/api/v3/streams | jq '.[] | {name, peer}'
 ```
 
 ### Health Check
 ```bash
 # Monitor cluster connectivity
-watch -n 5 'curl -s http://localhost/api/v3/system/info | jq .cluster'
+watch -n 5 'curl -s -u user:pass http://server/streamer/api/v3/system/info | jq .cluster'
 ```
 
 ### Logs
@@ -241,11 +241,11 @@ grep cluster_key /etc/flussonic/flussonic.conf
 ### Streams Not Pulled from Grabber
 - Verify peer name matches
 - Check m4f:// URL format
-- Confirm stream exists on grabber: `curl http://grabber/api/v3/streams`
+- Confirm stream exists on grabber: `curl -u user:pass http://grabber/streamer/api/v3/streams`
 - Review logs for connection errors
 
 ### Uneven Load Distribution
-- Check stream distribution: `curl http://localhost/api/v3/streams | jq`
+- Check stream distribution: `curl -u user:pass http://server/streamer/api/v3/streams | jq`
 - May be intentional based on cluster_ingest assignment
 - Monitor CPU usage per peer
 - Consider rebalancing manually via config
@@ -258,20 +258,20 @@ grep cluster_key /etc/flussonic/flussonic.conf
 
 ### High CPU on Some Peers
 - Unequal stream distribution
-- Check: `curl http://localhost/api/v3/system/info | jq .cpu`
+- Check: `curl -u user:pass http://server/streamer/api/v3/system/info | jq .cpu`
 - Redistribute streams via config
 - Monitor CPU per stream
 
 ### Commands
 ```bash
 # Detailed stream info
-curl http://localhost/api/v3/streams/stream1 | jq
+curl -u user:pass http://server/streamer/api/v3/streams/stream1 | jq
 
 # Cluster configuration
-curl http://localhost/api/v3/config | jq '.cluster'
+curl -u user:pass http://server/streamer/api/v3/config | jq '.cluster'
 
 # List all peers
-curl http://localhost/api/v3/peers | jq
+curl -u user:pass http://server/streamer/api/v3/peers | jq
 
 # Reload cluster config
 service flussonic reload

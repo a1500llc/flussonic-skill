@@ -157,16 +157,17 @@ http://server/camera1/archive-20240225/103000.m3u8
 
 ### List Available Archive
 ```
-GET /api/v3/streams/{stream}/segments
-Query: from=ISO8601&to=ISO8601
+GET /streamer/api/v3/streams/{stream}/dvr/ranges
 ```
-- Returns available recording windows
+- Returns available recording time windows
 - JSON response with timestamps
 
 **Example:**
 ```
-curl 'http://server/api/v3/streams/camera1/segments?from=2024-02-25T10:00:00Z&to=2024-02-25T12:00:00Z'
+curl -u user:pass 'http://server/streamer/api/v3/streams/camera1/dvr/ranges'
 ```
+
+Note: The endpoint `/api/v3/streams/{name}/segments` does NOT exist. Use `/streamer/api/v3/streams/{name}/dvr/ranges` instead.
 
 ## Rewind & Timeshift
 
@@ -355,7 +356,7 @@ http://server/stream/index.json
 ### Archive Playback
 ```bash
 # List available archive
-curl http://server/api/v3/streams/stream/segments
+curl -u user:pass http://server/streamer/api/v3/streams/stream/dvr/ranges
 
 # Play specific date
 http://server/stream/archive-20240225-3600.ts.m3u8

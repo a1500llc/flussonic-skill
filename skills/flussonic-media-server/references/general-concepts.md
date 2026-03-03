@@ -118,19 +118,29 @@ Requires: Reload or restart after edit
 ```
 # Global settings
 edit_auth admin password;
-http 80 { };
-https 443 { api false; };
+http 80;
+https 443;
+
+# Global DVR storage (must define before referencing)
+dvr my_storage {
+  root /mnt/archive;
+}
 
 # VOD locations
-vod movies { location = /storage/movies; };
+vod movies {
+  location /storage/movies;
+}
 
 # Streams
 stream camera1 {
   input rtsp://camera:554/stream;
-  hls;
-  dvr /archive/camera1;
-};
+  protocols hls dash;
+  dvr @my_storage 7d;
+}
 ```
+
+Note: Flussonic config syntax does NOT use semicolons at the end of block closings.
+Top-level directives use semicolons; blocks use curly braces.
 
 ### Hot Reload
 Some changes don't require full restart:
@@ -141,56 +151,75 @@ service flussonic reload
 ### Configuration Validation
 ```bash
 # Check syntax
-/opt/flussonic/bin/flussonic -c /etc/flussonic/flussonic.conf check
+/opt/flussonic/bin/validate_config /etc/flussonic/flussonic.conf
 ```
 
 ## API Basics
 
 ### REST API Overview
 ```
-Base URL: http://localhost/api/v3/
+Base URL: http://FLUSSONIC-IP/streamer/api/v3/
 ```
 
 ### Common Endpoints
 
-**Streams**
+**Streams** (uses PUT for create AND update — upsert pattern, NOT POST)
 ```bash
-GET    /api/v3/streams                 # List all streams
-GET    /api/v3/streams/{name}          # Get stream details
-POST   /api/v3/streams                 # Create stream
-PUT    /api/v3/streams/{name}          # Update stream
-DELETE /api/v3/streams/{name}          # Delete stream
+GET    /streamer/api/v3/streams                 # List all streams
+GET    /streamer/api/v3/streams/{name}          # Get stream details
+PUT    /streamer/api/v3/streams/{name}          # Create or update stream
+DELETE /streamer/api/v3/streams/{name}          # Delete stream
+POST   /streamer/api/v3/streams/{name}/stop     # Stop stream
 ```
 
-**Statistics**
+**Monitoring & Stats**
 ```bash
-GET /api/v3/stats                      # Global stats
-GET /api/v3/streams/{name}/stats       # Stream stats
-GET /api/v3/system/info                # System info
+GET /streamer/api/v3/config/stats               # Server stats (CPU, RAM, disk, GPU)
+GET /streamer/api/v3/monitoring/liveness         # Health check
+GET /streamer/api/v3/monitoring/readiness        # Readiness check
+```
+
+**DVR**
+```bash
+GET /streamer/api/v3/dvrs                        # List DVR configs
+GET /streamer/api/v3/streams/{name}/dvr/ranges   # Recording ranges
 ```
 
 **VOD**
 ```bash
-GET /api/v3/vods                       # List VOD locations
-GET /api/v3/vods/{name}                # List files
+GET /streamer/api/v3/vods                        # List VOD locations
+GET /streamer/api/v3/vods/{prefix}               # VOD details
 ```
 
 ### Authentication
 ```bash
-curl -u username:password http://localhost/api/v3/streams
+# Uses edit_auth credentials from flussonic.conf
+curl -u username:password http://server/streamer/api/v3/streams
 ```
 
-### Response Format
+### Response Format (Streams List)
 ```json
 {
-  "name": "camera1",
-  "input": "rtsp://camera:554/stream",
-  "state": "running",
-  "stats": {
-    "bitrate": 5000,
-    "duration": 3600,
-    "viewers": 5
-  }
+  "server_id": "abc-123",
+  "streams": [
+    {
+      "name": "camera1",
+      "stats": {
+        "status": "running",
+        "alive": true,
+        "bitrate": 5000,
+        "input": {
+          "bytes": 123456,
+          "proto": "rtsp",
+          "errors": 0
+        },
+        "online_clients": 5,
+        "running_transcoder": true
+      },
+      "inputs": [{"url": "rtsp://camera:554/stream"}]
+    }
+  ],
+  "estimated_count": 1
 }
 ```
 
@@ -225,7 +254,7 @@ API request failed             # API error
 ### Monitoring
 ```bash
 # Stream activity
-curl http://localhost/api/v3/stats | jq '.streams'
+curl http://server/streamer/api/v3/stats | jq '.streams'
 
 # CPU/memory (via system)
 ps aux | grep flussonic

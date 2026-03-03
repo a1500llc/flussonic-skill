@@ -106,25 +106,58 @@ stream rtp_stream {
 
 ## SRT Ingest
 
-### Basic SRT Input
+### SRT Caller Mode (Flussonic pulls from remote SRT source)
 ```
-stream srt_input {
-  input srt://listen:1234;
+stream srt_pull {
+  input srt://REMOTE-IP:8888 streamid="#!::m=request,r=stream_name";
 }
 ```
 
-### SRT Listener Options
+With passphrase:
 ```
-stream srt_input {
-  input srt://listen:1234 passphrase=secret latency=200 congest_ctrl=live;
+stream srt_pull_encrypted {
+  input srt://REMOTE-IP:9999 passphrase=0987654321 streamid="#!::m=request";
 }
 ```
+
+### SRT Listener Mode (Accept incoming SRT publish)
+
+**Global shared port (all streams share one port):**
+```
+srt_publish {
+  port 9998;
+  passphrase 0123456789;
+}
+
+stream my_srt_stream {
+  input publish://;
+}
+```
+
+**Per-stream dedicated port:**
+```
+stream my_srt_stream {
+  input publish://;
+  srt_publish {
+    port 9998;
+    passphrase 0123456789;
+  }
+}
+```
+
+**Streamid format for SRT:** `#!::` followed by key=value pairs:
+- `r=STREAM_NAME` — stream name
+- `m=publish` — for sending to Flussonic
+- `m=request` — for pulling from Flussonic
 
 **Common SRT Parameters:**
-- `latency` - in milliseconds (default 120ms)
-- `passphrase` - encryption password
-- `congest_ctrl` - congestion control (live/file)
-- `sndbuf`/`rcvbuf` - buffer size
+- `passphrase` — encryption password (10-79 characters)
+- `latency` — packet delivery delay buffer in ms (default 120ms)
+- `enforcedencryption` — require matching encryption (default true)
+- `timeout` — data transmission timeout in seconds
+- `connect_timeout` — connection timeout in seconds
+
+Note: The syntax `srt://listen:PORT` does NOT work in Flussonic. Use `input publish://;` with `srt_publish {}` or `srt PORT;` for listener mode.
 
 ## HTTP/Multicast Ingest
 
@@ -149,6 +182,21 @@ stream multicast1 {
   input udp://239.0.0.1:1234/10.100.200.3;
 }
 ```
+
+### Multicast with IGMPv3 Source Filtering
+Real-world multicast often uses IGMPv3 with `sources=` parameter:
+```
+stream multicast_igmpv3 {
+  input udp://239.77.16.88:8999/172.17.202.18?sources=10.77.22.88&buffer_size=8M&pkt_size=1316;
+}
+```
+
+Parameters:
+- `sources=IP` — IGMPv3 source filter (SSM)
+- `buffer_size=8M` — receive buffer size
+- `pkt_size=1316` — expected packet size
+- `cc_check=repeat` — continuity counter check mode
+- `flushpcr=1` — flush on PCR
 
 ### Multicast Troubleshooting
 ```bash
@@ -245,7 +293,7 @@ service flussonic status
 tail -f /var/log/flussonic/flussonic.log
 
 # Check active streams
-curl -s http://localhost/api/v3/streams | jq .
+curl -s http://server/streamer/api/v3/streams | jq .
 ```
 
 ### Common Issues

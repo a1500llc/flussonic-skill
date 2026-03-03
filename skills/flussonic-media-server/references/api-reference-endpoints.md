@@ -3,294 +3,434 @@
 ## Table of Contents
 - [Overview](#overview)
 - [Streams Management](#streams-management)
-- [Configuration](#configuration)
+- [Configuration & Stats](#configuration--stats)
 - [VOD Management](#vod-management)
-- [System & Status](#system--status)
+- [Monitoring & Health](#monitoring--health)
 - [DVR & Archive](#dvr--archive)
+- [DVR Configurations (Global)](#dvr-configurations-global)
 - [Templates](#templates)
-- [Authentication & Tokens](#authentication--tokens)
+- [Authentication & Sessions](#authentication--sessions)
+- [Cluster](#cluster)
 - [Common Patterns](#common-patterns)
 
 ## Overview
 
-**Base URL:** `http://localhost/api/v3/`
-**Authentication:** Basic auth (username:password)
+**Base URL:** `http://FLUSSONIC-IP/streamer/api/v3/`
+**Authentication:** Basic auth using `edit_auth` credentials (for write) or `view_auth` (for read-only)
 **Response Format:** JSON
-**Version:** 3 (current stable)
+**API Design:** RESTful with UPSERT pattern (PUT creates or updates)
+
+### Authentication Methods
+```bash
+# Basic Auth (edit_auth credentials from flussonic.conf)
+curl -u username:password http://server/streamer/api/v3/streams
+
+# Bearer Token
+curl -H "Authorization: Bearer TOKEN" http://server/streamer/api/v3/streams
+```
 
 ### General Patterns
 
-**Create/Update (Upsert):**
+**Create/Update (Upsert) — always PUT, not POST:**
 ```bash
-PUT /api/v3/resource/{name}
+PUT /streamer/api/v3/streams/{name}
 ```
 
 **Delete:**
 ```bash
-DELETE /api/v3/resource/{name}
+DELETE /streamer/api/v3/streams/{name}
 ```
 
-**List:**
+**List (returns collection with metadata):**
 ```bash
-GET /api/v3/resources
+GET /streamer/api/v3/streams
 ```
 
 **Get Single:**
 ```bash
-GET /api/v3/resource/{name}
+GET /streamer/api/v3/streams/{name}
+```
+
+### Collection Response Format
+All list endpoints return this structure:
+```json
+{
+  "streams": [...],
+  "estimated_count": 100,
+  "timing": {"select": 0, "sort": 0, "load": 5, "filter": 0, "limit": 0},
+  "next": "cursor_value",
+  "prev": "cursor_value"
+}
+```
+
+### Pagination (Cursor-Based)
+Flussonic uses **cursor-based pagination**, NOT offset-based:
+```bash
+GET /streamer/api/v3/streams?limit=50
+GET /streamer/api/v3/streams?limit=50&cursor=CURSOR_VALUE
+```
+
+### Filtering & Sorting
+```bash
+# Filter by field value
+GET /streamer/api/v3/streams?stats.status=running
+
+# Comparison operators: _lt, _lte, _gt, _gte, _like, _is=null
+GET /streamer/api/v3/streams?stats.bitrate_gt=1000
+
+# Sort (prefix with - for descending)
+GET /streamer/api/v3/streams?sort=name,-stats.bitrate
+
+# Select specific fields
+GET /streamer/api/v3/streams?select=name,stats.status,stats.bitrate
 ```
 
 ## Streams Management
 
 ### List Streams
 ```bash
-GET /api/v3/streams
+GET /streamer/api/v3/streams
 ```
-Returns all streams with current state, stats, input/output info
+Returns all streams with config, stats, inputs, transcoder info.
 
 ### Get Stream Details
 ```bash
-GET /api/v3/streams/{name}
+GET /streamer/api/v3/streams/{name}
 ```
-Full configuration and detailed stats for specific stream
 
-### Create/Update Stream
+### Create/Update Stream (Upsert via PUT)
 ```bash
-PUT /api/v3/streams/{name}
+PUT /streamer/api/v3/streams/{name}
 Content-Type: application/json
+```
 
+**Correct JSON body format:**
+```json
 {
-  "input": "rtsp://camera:554/stream",
-  "hls": {},
-  "dvr": "/archive/mystream",
+  "inputs": [
+    {"url": "udp://239.0.0.1:1234"}
+  ],
   "transcoder": {
-    "vb": "2000k",
-    "ab": "128k",
-    "size": "1280x720"
-  }
+    "global": {
+      "hw": "nvenc",
+      "deviceid": 0,
+      "fps": 30,
+      "gop": 60
+    },
+    "video": [
+      {"vb": "2000k", "size": "1280x720"},
+      {"vb": "800k", "size": "640x360"}
+    ],
+    "audio": {
+      "ab": "128k",
+      "acodec": "aac"
+    }
+  },
+  "dvr": {
+    "reference": "my_storage",
+    "expiration": 604800
+  },
+  "protocols": {
+    "hls": true,
+    "dash": true
+  },
+  "segment_duration": 2000,
+  "segment_count": 30
 }
 ```
+
+**Important notes:**
+- `inputs` is an **array of objects** with `"url"` field, NOT a string
+- `transcoder` is a structured object, NOT flat `{"vb": "2000k"}`
+- `dvr` is an object (with `reference` to global DVR, or `root` for inline), NOT a string path
+- Partial updates: send only changed fields (merges with existing config)
+- Full replace: add `"$reset": true` to replace entire config
+- Set a field to `null` to disable a feature: `{"drm": null}`
 
 ### Delete Stream
 ```bash
-DELETE /api/v3/streams/{name}
+DELETE /streamer/api/v3/streams/{name}
 ```
+Returns 204 No Content on success.
 
 ### Stop Stream
 ```bash
-POST /api/v3/streams/{name}/stop
+POST /streamer/api/v3/streams/{name}/stop
 ```
-Stops processing without deleting config
+Stops processing without deleting config.
+
+### Force Select Input
+```bash
+POST /streamer/api/v3/streams/{name}/inputs/{index}/select
+```
+Force switch to a specific input source (private API).
 
 ### Stream State Values
 - `running` - Stream active and processing
-- `starting` - Initializing
-- `disconnected` - Input disconnected
-- `stalled` - Error state
-- `disabled` - Not configured
+- `waiting` - Waiting for source to connect
+- `starting` - Initializing connection
+- `stopped` - Manually stopped
 
-## Configuration
+## Configuration & Stats
 
-### Get Server Config
+### Get Server Config + Stats
 ```bash
-GET /api/v3/config
+GET /streamer/api/v3/config
 ```
-Returns complete server configuration (flussonic.conf equivalent)
+Returns complete server configuration AND live stats including:
+- Server version, uptime, hostname
+- CPU/memory/scheduler usage
+- Transcoder devices (GPUs)
+- Disk partitions and usage
+- Listener configuration (HTTP/HTTPS ports)
+- edit_auth credentials
+- Server names
 
-### Save Server Config
+### Get Stats Only
 ```bash
-PUT /api/v3/config
-Content-Type: application/json
-
-{
-  "edit_auth": "admin password",
-  "listeners": [
-    { "address": "0.0.0.0", "port": 80 }
-  ]
-}
+GET /streamer/api/v3/config/stats
 ```
+Returns runtime statistics: CPU, memory, disk, GPU, streams count, network throughput.
 
-### Server Settings
+### Update Server Config
 ```bash
-GET /api/v3/config/settings
-PUT /api/v3/config/settings
+PUT /streamer/api/v3/config
 ```
-Modify: HTTP ports, HTTPS, admin credentials, license key
 
-### Listeners
-```bash
-GET /api/v3/config/listeners
-POST /api/v3/config/listeners
-```
-Manage HTTP/HTTPS ports, SSL certificates, API access
+**Note:** The following endpoints do NOT exist:
+- ~~`GET /api/v3/config/settings`~~ — use `GET /streamer/api/v3/config`
+- ~~`GET /api/v3/config/listeners`~~ — listener info is in config response
+- ~~`GET /api/v3/system/info`~~ — use `GET /streamer/api/v3/config/stats`
 
 ## VOD Management
 
 ### List VOD Locations
 ```bash
-GET /api/v3/vods
+GET /streamer/api/v3/vods
 ```
 
 ### Get VOD Details
 ```bash
-GET /api/v3/vods/{name}
+GET /streamer/api/v3/vods/{prefix}
 ```
-Lists files in VOD location
 
-### Create VOD Location
+### Create/Update VOD Location
 ```bash
-PUT /api/v3/vods/{name}
+PUT /streamer/api/v3/vods/{prefix}
 Content-Type: application/json
 
 {
-  "location": "/storage/videos"
+  "storages": [{"path": "/storage/videos"}]
 }
 ```
 
 ### Delete VOD Location
 ```bash
-DELETE /api/v3/vods/{name}
-```
-
-### Upload File to VOD
-```bash
-POST /api/v3/vods/{name}/upload
-Content-Type: multipart/form-data
-
-file: <binary file>
+DELETE /streamer/api/v3/vods/{prefix}
 ```
 
 ### List Files in VOD
 ```bash
-GET /api/v3/vods/{name}/files
-GET /api/v3/vods/{name}/files/{path}
+GET /streamer/api/v3/vods/{prefix}/storages/{storage_index}/files
+GET /streamer/api/v3/vods/{prefix}/storages/{storage_index}/files/{subpath}
 ```
 
-## System & Status
-
-### System Info
+### Get Opened VOD Files
 ```bash
-GET /api/v3/system/info
-```
-Returns: CPU, memory, disk, GPU, license, version
-
-### Stream Statistics
-```bash
-GET /api/v3/stats
-```
-Real-time stats for all streams (bitrate, viewers, uptime)
-
-### Stream-Specific Stats
-```bash
-GET /api/v3/streams/{name}/stats
+GET /streamer/api/v3/vods/opened_files
 ```
 
-### Server Status
+## Monitoring & Health
+
+### Liveness Check
 ```bash
-GET /api/v3/health
+GET /streamer/api/v3/monitoring/liveness
 ```
-Health check endpoint (returns 200 if running)
+Returns server version and current timestamp. Use for basic health checks.
+
+**Response:**
+```json
+{
+  "now": 1772544650689,
+  "build": 0,
+  "server_version": "26.02"
+}
+```
+
+### Readiness Check
+```bash
+GET /streamer/api/v3/monitoring/readiness
+```
+Returns version, start time, and current timestamp. Use for load balancer health checks.
+
+**Response:**
+```json
+{
+  "now": 1772544650701,
+  "build": 0,
+  "started_at": 1771531360,
+  "server_version": "26.02"
+}
+```
+
+**Note:** The following endpoints do NOT exist:
+- ~~`GET /api/v3/health`~~
+- ~~`GET /api/v3/stats`~~
+- ~~`GET /api/v3/system/info`~~
 
 ## DVR & Archive
 
 ### Get DVR Ranges
 ```bash
-GET /api/v3/streams/{name}/dvr/ranges
+GET /streamer/api/v3/streams/{name}/dvr/ranges
 ```
-Returns available recording time windows
+Returns available recording time windows.
 
 ### Delete DVR Range
 ```bash
-DELETE /api/v3/streams/{name}/dvr/ranges
+DELETE /streamer/api/v3/streams/{name}/dvr/ranges
 Query: from=TIMESTAMP&to=TIMESTAMP
 ```
 
-### Lock DVR Segment
+### Export DVR as MP4
 ```bash
-POST /api/v3/streams/{name}/dvr/locks
+POST /streamer/api/v3/streams/{name}/dvr/export
+```
+
+### Check DVR Consistency
+```bash
+POST /streamer/api/v3/streams/{name}/dvr/consistency_check
+```
+
+### DVR Locks (Deprecated)
+```bash
+GET /streamer/api/v3/streams/{name}/dvr/locks     # List locks
+POST /streamer/api/v3/streams/{name}/dvr/locks    # Create lock
+DELETE /streamer/api/v3/streams/{name}/dvr/locks  # Remove lock
+```
+Note: DVR locks endpoints are **deprecated** in current versions.
+
+### DVR Export Jobs
+```bash
+GET /streamer/api/v3/dvr_export_jobs              # List background export jobs
+PUT /streamer/api/v3/dvr_export_jobs/{id}         # Start a job
+GET /streamer/api/v3/dvr_export_jobs/{id}         # Get job status
+DELETE /streamer/api/v3/dvr_export_jobs/{id}      # Cancel a job
+```
+
+**Note:** The endpoint ~~`GET /api/v3/streams/{name}/segments`~~ does NOT exist. Use `GET /streamer/api/v3/streams/{name}/dvr/ranges` instead.
+
+## DVR Configurations (Global)
+
+### List DVR Configs
+```bash
+GET /streamer/api/v3/dvrs
+```
+
+### Get/Create/Update/Delete DVR Config
+```bash
+GET /streamer/api/v3/dvrs/{name}
+PUT /streamer/api/v3/dvrs/{name}
+DELETE /streamer/api/v3/dvrs/{name}
+```
+
+**Create DVR config:**
+```json
 {
-  "from": "2024-02-25T10:00:00Z",
-  "to": "2024-02-25T12:00:00Z"
+  "root": "/mnt/archive",
+  "expiration": 604800,
+  "disk_usage_limit": 97,
+  "storage_limit": 400000000000,
+  "dvr_replicate": false,
+  "replication_port": 8002
 }
 ```
-Prevent deletion of segment
 
-### List DVR Locks
+### DVR Disk Management
 ```bash
-GET /api/v3/streams/{name}/dvr/locks
-```
-
-### Get DVR Segments
-```bash
-GET /api/v3/streams/{name}/segments
-Query: from=DATE&to=DATE
+GET /streamer/api/v3/dvrs/{name}/disks
+GET /streamer/api/v3/dvrs/{name}/disks/{path}
+PUT /streamer/api/v3/dvrs/{name}/disks/{path}
+DELETE /streamer/api/v3/dvrs/{name}/disks/{path}
 ```
 
 ## Templates
 
 ### List Templates
 ```bash
-GET /api/v3/templates
+GET /streamer/api/v3/templates
 ```
 
-### Get Template
+### Get/Create/Update/Delete Template
 ```bash
-GET /api/v3/templates/{name}
+GET /streamer/api/v3/templates/{name}
+PUT /streamer/api/v3/templates/{name}
+DELETE /streamer/api/v3/templates/{name}
 ```
 
-### Create Template
-```bash
-PUT /api/v3/templates/{name}
-{
-  "input": "publish://",
-  "hls": {}
-}
-```
-
-### Delete Template
-```bash
-DELETE /api/v3/templates/{name}
-```
-
-## Authentication & Tokens
-
-### List Tokens
-```bash
-GET /api/v3/tokens
-```
-
-### Create Token
-```bash
-POST /api/v3/tokens
-{
-  "name": "viewer1",
-  "streams": ["camera1", "camera2"],
-  "expires": 3600
-}
-```
-
-### Revoke Token
-```bash
-DELETE /api/v3/tokens/{token_id}
-```
-
-### Refresh Token
-```bash
-PUT /api/v3/tokens/{token_id}
-{
-  "expires": 7200
-}
-```
-
-### Token Response
+**Example template (for accepting RTMP publish):**
 ```json
 {
-  "token": "abc123def456...",
-  "name": "viewer1",
-  "streams": ["camera1", "camera2"],
-  "created": "2024-02-25T10:00:00Z",
-  "expires": "2024-02-25T11:00:00Z"
+  "inputs": [{"url": "publish://"}],
+  "protocols": {"hls": true, "dash": true}
 }
+```
+
+## Authentication & Sessions
+
+### Auth Backends
+```bash
+GET /streamer/api/v3/auth_backends
+GET /streamer/api/v3/auth_backends/{name}
+PUT /streamer/api/v3/auth_backends/{name}
+DELETE /streamer/api/v3/auth_backends/{name}
+```
+
+### Sessions
+```bash
+GET /streamer/api/v3/sessions                # List active sessions
+GET /streamer/api/v3/sessions/{id}           # Get session details
+DELETE /streamer/api/v3/sessions/{id}        # Kill session
+POST /streamer/api/v3/sessions/reauth        # Re-authenticate sessions
+```
+
+### API Tokens
+```bash
+GET /streamer/api/v3/api_tokens              # List API tokens (read-only)
+```
+
+**Note:** The following token management endpoints do NOT exist:
+- ~~`POST /api/v3/tokens`~~ (create token)
+- ~~`DELETE /api/v3/tokens/{id}`~~ (revoke token)
+- ~~`PUT /api/v3/tokens/{id}`~~ (refresh token)
+
+Token-based stream authentication is configured via auth backends (on_play/on_publish callbacks) or Lua scripts, not through a token CRUD API.
+
+### Event Sinks
+```bash
+GET /streamer/api/v3/event_sinks
+GET /streamer/api/v3/event_sinks/{name}
+PUT /streamer/api/v3/event_sinks/{name}
+DELETE /streamer/api/v3/event_sinks/{name}
+GET /streamer/api/v3/event_sinks/{name}/events
+```
+
+## Cluster
+
+### Peers
+```bash
+GET /streamer/api/v3/cluster/peers
+GET /streamer/api/v3/cluster/peers/{hostname}
+PUT /streamer/api/v3/cluster/peers/{hostname}
+DELETE /streamer/api/v3/cluster/peers/{hostname}
+```
+
+### Sources
+```bash
+GET /streamer/api/v3/cluster/sources
+GET /streamer/api/v3/cluster/sources/{url}
+PUT /streamer/api/v3/cluster/sources/{url}
+DELETE /streamer/api/v3/cluster/sources/{url}
 ```
 
 ## Common Patterns
@@ -298,75 +438,75 @@ PUT /api/v3/tokens/{token_id}
 ### Error Response
 ```json
 {
-  "error": "stream_not_found",
-  "message": "Stream 'unknown' not found"
+  "error": "not_found",
+  "name": "stream_name"
 }
 ```
 
-### Batch Operations
+### Stream Monitoring Script
 ```bash
-# Get multiple streams at once
-curl http://localhost/api/v3/streams | jq '.[] | select(.name | test("camera"))'
-
-# Filter active streams
-curl http://localhost/api/v3/streams | jq '.[] | select(.state=="running")'
+# List all streams with status and bitrate
+curl -s -u user:pass http://server/streamer/api/v3/streams | \
+  python3 -c 'import sys,json; data=json.load(sys.stdin);
+[print(f"{s[\"name\"]}: {s.get(\"stats\",{}).get(\"status\",\"?\")} ({s.get(\"stats\",{}).get(\"bitrate\",0)} kbps)") for s in data.get("streams",[])]'
 ```
 
-### Monitoring Script
+### Create Stream via API
 ```bash
-# Check all stream statuses
-for stream in $(curl -s http://localhost/api/v3/streams | jq -r '.[].name'); do
-  state=$(curl -s http://localhost/api/v3/streams/$stream | jq -r '.state')
-  bitrate=$(curl -s http://localhost/api/v3/streams/$stream | jq -r '.stats.bitrate')
-  echo "$stream: $state ($bitrate kbps)"
-done
+curl -u user:pass -X PUT \
+  http://server/streamer/api/v3/streams/test_stream \
+  -H "Content-Type: application/json" \
+  -d '{"inputs": [{"url": "fake://fake"}]}'
 ```
 
-### Common Query Parameters
-
-| Parameter | Purpose | Example |
-|-----------|---------|---------|
-| `token` | Stream access token | `?token=abc123` |
-| `from` | Start time/date | `?from=2024-02-25T10:00:00Z` |
-| `to` | End time/date | `?to=2024-02-25T12:00:00Z` |
-| `limit` | Result limit | `?limit=100` |
-| `offset` | Pagination offset | `?offset=50` |
-| `filter` | Search/filter | `?filter=camera` |
+### Get Server Stats
+```bash
+curl -s -u user:pass http://server/streamer/api/v3/config/stats | python3 -m json.tool
+```
 
 ### Response Codes
 
 | Code | Meaning |
 |------|---------|
-| 200 | Success |
-| 201 | Created |
-| 204 | No Content |
+| 200 | Success (GET, PUT) |
+| 204 | No Content (DELETE success) |
 | 400 | Bad Request |
 | 401 | Unauthorized |
 | 404 | Not Found |
-| 409 | Conflict |
 | 500 | Server Error |
 
-## Useful Combinations
-
-### Restart Stream
+### OpenAPI Schema
+The complete API schema is available at:
 ```bash
-curl -X POST http://localhost/api/v3/streams/mystream/stop
-sleep 2
-curl http://localhost/api/v3/streams | jq '.[] | select(.name=="mystream")'
+GET /streamer/api/v3/schema
+```
+Returns OpenAPI 3.0/3.1 specification for all endpoints.
+
+## Additional Endpoints
+
+### Logos
+```bash
+GET/PUT/DELETE /streamer/api/v3/logos/{name}
 ```
 
-### Export Config
+### Caches
 ```bash
-curl -u admin:pass http://localhost/api/v3/config > flussonic.json
+GET/PUT/DELETE /streamer/api/v3/caches/{name}
 ```
 
-### Monitor Stream Health
+### IPTV
 ```bash
-watch -n 5 'curl -s http://localhost/api/v3/stats | jq ".streams[] | {name, bitrate, viewers}"'
+GET/PUT/DELETE /streamer/api/v3/iptv
 ```
 
-### Get Stream with Most Viewers
+### DVB Cards
 ```bash
-curl -s http://localhost/api/v3/stats | \
-  jq '.streams | max_by(.viewers)'
+GET/PUT/DELETE /streamer/api/v3/dvb_cards/{name}
+GET /streamer/api/v3/dvb_cards/{name}/available_programs
+```
+
+### Episodes
+```bash
+GET /streamer/api/v3/episodes
+GET /streamer/api/v3/dvr_episodes
 ```

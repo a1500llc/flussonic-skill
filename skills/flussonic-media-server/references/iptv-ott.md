@@ -70,7 +70,7 @@ http://server/stream2/index.m3u8
 ### Generate M3U Dynamically
 ```bash
 # Create M3U from API
-curl http://localhost/api/v3/streams | jq -r '.[] | 
+curl -u user:pass http://server/streamer/api/v3/streams | jq -r '.[] | 
   "#EXTINF:-1 tvg-id=\"\(.name)\" tvg-name=\"\(.name)\",\(.name)\n" +
   "http://localhost/\(.name)/index.m3u8"' > playlist.m3u
 ```
@@ -94,19 +94,17 @@ curl http://localhost/api/v3/streams | jq -r '.[] |
 ```
 
 ### EPG Integration
-```
-# Configure EPG in Flussonic
-epg {
-  source = "http://epg-server/xmltv.xml";
-  update_interval = 3600;
-}
+EPG data can be uploaded via the multiplexer API:
+```bash
+POST /streamer/api/v3/multiplexers/{name}/xmltv_upload
 ```
 
-### Stream EPG URL
+### Stream with DVR for Catch-Up TV
 ```
 stream sports {
   input rtsp://camera:554/stream;
-  epg_id = "ch_sports";
+  dvr @my_storage 7d;
+  protocols hls dash;
 }
 ```
 
@@ -114,13 +112,11 @@ stream sports {
 
 ### Multicast Delivery (Unicast Alternative)
 ```
-# Ingest from source
+# Ingest from source and push to multicast
 stream live_channel {
   input rtsp://encoder:554/stream;
+  push udp://239.0.0.1:1234;
 }
-
-# Output to multicast
-output push://udp://239.0.0.1:1234;
 ```
 
 **Playback:**
@@ -132,12 +128,12 @@ vlc udp://@239.0.0.1:1234
 ```
 stream set_top_box_stream {
   input rtsp://camera:554/stream;
-  
+
   # Transcode to compatible format
   transcoder vb=2000k size=1280x720 ab=128k;
-  
-  # Output as MPEG-TS
-  output push://udp://239.0.0.1:5000;
+
+  # Push as MPEG-TS to multicast
+  push udp://239.0.0.1:5000;
 }
 ```
 
@@ -157,11 +153,11 @@ stream playlist_channel {
 ### VOD Location Setup
 ```
 vod movies {
-  location = /storage/movies;
+  location /storage/movies;
 }
 
 vod shows {
-  location = /storage/shows;
+  location /storage/shows;
 }
 ```
 
@@ -169,16 +165,14 @@ vod shows {
 For OTT, provide multiple quality options:
 ```
 # API to get VOD manifest
-curl http://localhost/api/v3/vods/movies
+curl -u user:pass http://server/streamer/api/v3/vods/movies
 ```
 
 ### VOD with DRM
 ```
 vod protected {
-  location = /storage/drm-content;
-  drm widevine {
-    license_url = "https://license-server/widevine";
-  };
+  location /storage/drm-content;
+  drm cpix keyserver=http://drm-server/api/drm/cpix?client=myapp&clientToken=SECRET;
 }
 ```
 
@@ -193,22 +187,12 @@ stream protected_iptv {
 ```
 
 ### OTT Streaming DRM
+Use CPIX for multi-DRM (Widevine + PlayReady + FairPlay simultaneously):
 ```
 stream protected_ott {
   input rtsp://source/stream;
-  
-  # Multiple DRM for device compatibility
-  drm widevine {
-    license_url = "https://license-server/widevine";
-  };
-  
-  drm playready {
-    license_url = "https://license-server/playready";
-  };
-  
-  drm fairplay {
-    license_url = "https://license-server/fairplay";
-  };
+  drm cpix keyserver=http://drm-server/api/drm/cpix?client=myapp&clientToken=SECRET resource_id=protected_ott;
+  protocols dash hls;
 }
 ```
 
@@ -236,7 +220,8 @@ stream protected_ott {
    stream ott_adaptive {
      input rtsp://source/stream;
      transcoder vb=5000k size=1920x1080 vb=2500k size=1280x720 vb=1000k size=640x480 ab=128k;
-     hls { variant = bitrate; };
+     protocols hls dash;
+     segment_duration 2;
    }
    ```
 
@@ -253,10 +238,9 @@ stream protected_ott {
 
 4. **Segment Configuration**
    ```
-   hls {
-     segment_duration = 6;
-     window_size = 5;
-   }
+   # Top-level stream directives:
+   segment_duration 6;
+   segment_count 5;
    ```
 
 ### Catch-Up TV
@@ -264,7 +248,7 @@ Archive + VOD:
 ```
 stream catchup {
   input rtsp://source/stream;
-  dvr /archive/channel1;
+  dvr @my_storage 7d;
   hls;
 }
 ```
@@ -281,11 +265,11 @@ http://server/catchup/archive-YYYYMMDD/HHMMSS.m3u8
 ### Monitoring
 ```bash
 # Stream health
-curl http://localhost/api/v3/streams | jq '.[] | {name, bitrate, viewers}'
+curl -u user:pass http://server/streamer/api/v3/streams | jq '.[] | {name, bitrate, viewers}'
 
 # Check EPG
-curl http://localhost/api/v3/epg
+curl -u user:pass http://server/streamer/api/v3/epg
 
 # VOD inventory
-curl http://localhost/api/v3/vods
+curl -u user:pass http://server/streamer/api/v3/vods
 ```
